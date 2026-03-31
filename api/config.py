@@ -16,10 +16,13 @@ logger.setLevel(logging.INFO)
 class Settings(BaseSettings):
     MONGO_DB_URI: str
     OPENAI_KEY: str
+    GROQ_API_KEY: str
+    GEMINI_API_KEY: str
     GITHUB_CLIENT_ID: str
     GITHUB_CLIENT_SECRET: str
     STRIPE_WEBHOOK_SECRET: str
     STRIPE_API_KEY: str
+    SELF_HOST: bool = False
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
 

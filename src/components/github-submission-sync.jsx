@@ -41,6 +41,8 @@ const GitHubSubmissionSync = () => {
     const [syncEnabled, setSyncEnabled] = useState(false);
     const [creatingRepo, setCreatingRepo] = useState(false);
     const [selectedRepo, setSelectedRepo] = useState({ id: null, name: "" });
+    // Track the last successfully synced submission filename for display
+    const [lastSynced, setLastSynced] = useState(null);
     const [userData, setUserData] = useState({
         githubAccessToken: "",
         githubName: "",
@@ -71,6 +73,12 @@ const GitHubSubmissionSync = () => {
                         "sync_enabled",
                     ]);
 
+                // Guard against corrupted or missing storage data to prevent rendering crashes
+                if (!github_user_data || !github_access_token) {
+                    setIsAuthenticated(false);
+                    return;
+                }
+
                 setUserData({
                     githubAccessToken: github_access_token,
                     githubName: github_user_data.github_name,
@@ -86,6 +94,11 @@ const GitHubSubmissionSync = () => {
                     );
                     if (selected) setSelectedRepo({ id: selected_repo_id, name: selected.name });
                 }
+
+                // Read the last successfully synced submission filename from local storage
+                chrome.storage.local.get(["last_synced_file"], (result) => {
+                    if (result.last_synced_file) setLastSynced(result.last_synced_file);
+                });
             }
         } catch (error) {
             console.error("Authentication check failed", error);
@@ -169,10 +182,9 @@ const GitHubSubmissionSync = () => {
         await setChromeStorage({ sync_enabled: checked });
         setSyncEnabled(checked);
 
-        if (!checked) {
-            await removeChromeStorage("selected_repo_id");
-            setSelectedRepo({ id: null, name: "" });
-        } else if (userData.repos.length > 0) {
+        // When re-enabling sync, only default to first repo if no repo was previously selected.
+        // This preserves the user's repo choice across toggle cycles.
+        if (checked && !selectedRepo.id && userData.repos.length > 0) {
             const firstRepo = userData.repos[0];
             await setChromeStorage({ selected_repo_id: firstRepo.id });
             setSelectedRepo({ id: firstRepo.id, name: firstRepo.name });
@@ -248,13 +260,21 @@ const GitHubSubmissionSync = () => {
                     </div>
                 </div>
                 <div className="flex items-center justify-between space-x-3 pt-1">
-                    <p className="text-sm text-muted-foreground">
-                        {syncEnabled
-                            ? selectedRepo.id
-                                ? `Currently syncing with: ${selectedRepo.name}`
-                                : "Select or create a repository to start syncing"
-                            : "Enable to start syncing LeetCode submissions to a GitHub repository"}
-                    </p>
+                    <div>
+                        <p className="text-sm text-muted-foreground">
+                            {syncEnabled
+                                ? selectedRepo.id
+                                    ? `Currently syncing with: ${selectedRepo.name}`
+                                    : "Select or create a repository to start syncing"
+                                : "Enable to start syncing LeetCode submissions to a GitHub repository"}
+                        </p>
+                        {/* Display the last successfully synced submission */}
+                        {lastSynced && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Last synced: <span className="font-mono">{lastSynced}</span>
+                            </p>
+                        )}
+                    </div>
                     <Switch checked={syncEnabled} onCheckedChange={handleToggleSync} />
                 </div>
             </CardHeader>

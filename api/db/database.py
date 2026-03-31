@@ -4,7 +4,10 @@ from pymongo import MongoClient
 import certifi
 from api.config import settings
 
-client = MongoClient(settings.MONGO_DB_URI, tlsCAFile=certifi.where())
+if settings.MONGO_DB_URI.startswith("mongodb+srv://"):
+    client = MongoClient(settings.MONGO_DB_URI, tlsCAFile=certifi.where())
+else:
+    client = MongoClient(settings.MONGO_DB_URI)
 DB = client["LITCOACH"]
 USERS_COLLECTION = DB["users"]
 

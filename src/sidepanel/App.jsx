@@ -5,12 +5,13 @@ import { Input } from "@components/ui/input";
 import InvalidPage from "@components/invalid-page";
 import GetPremiumPopUp from "@components/get-premium";
 import { useToast } from "@hooks/use-toast";
-import { Info, Send, StopCircle, Loader2 } from "lucide-react";
+import { Info, Send, StopCircle, Loader2, Trash2, CheckCircle2, XCircle } from "lucide-react";
 import ReportIssueButton from "@components/report-issue";
 import ReactMarkdown from "react-markdown";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/default-highlight";
 
-const OPTIONS_PAGE = "chrome-extension://pbkbbpmpbidfjbcapgplbdogiljdechf/src/options/index.html";
+// Dynamically construct the options page URL so it works across reinstalls and ID changes
+const OPTIONS_PAGE = chrome.runtime.getURL("src/options/index.html");
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const MAX_CHAR_LIMIT = 275;
 const SUGGESTIONS = [
@@ -25,12 +26,16 @@ function App() {
     const { toast } = useToast();
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
+    // Ref to track the current problem slug so we can clear chat on problem switches
+    const currentProblemRef = useRef(null);
     const [googleUserID, setGoogleUserID] = useState(null);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isValidPage, setIsValidPage] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(true);
+    // Track the last GitHub sync status for the header badge ("success" | "error" | null)
+    const [syncStatus, setSyncStatus] = useState(null);
     const [premiumAlert, setPremiumAlert] = useState({
         open: false,
         alertMessage: null,
@@ -49,26 +54,53 @@ function App() {
                 chrome.tabs.query({ active: true, currentWindow: true }, resolve);
             });
 
-            setIsValidPage(currentTab?.url?.startsWith("https://leetcode.com/problems/") || false);
+            const isValid = currentTab?.url?.startsWith("https://leetcode.com/problems/") || false;
+            setIsValidPage(isValid);
+
+            // Seed the problem slug ref so first-load doesn't falsely clear chat
+            if (isValid && currentTab?.url) {
+                const slug = currentTab.url.replace("https://leetcode.com/problems/", "").split("/")[0];
+                currentProblemRef.current = slug;
+            }
 
             const { google_user_id } = await new Promise((resolve) =>
                 chrome.storage.sync.get(["google_user_id"], resolve),
             );
 
             setGoogleUserID(google_user_id);
+
+            // Read initial sync status for the header badge
+            chrome.storage.local.get(["last_sync_status"], (result) => {
+                if (result.last_sync_status) setSyncStatus(result.last_sync_status);
+            });
         };
 
         fetchData();
 
+        // Listen for sync status changes pushed from the background script
+        const onStorageChanged = (changes, area) => {
+            if (area === "local" && changes.last_sync_status) {
+                setSyncStatus(changes.last_sync_status.newValue);
+            }
+        };
+        chrome.storage.onChanged.addListener(onStorageChanged);
+
         chrome.runtime.onMessage.addListener(updateIsValidPage);
         return () => {
             chrome.runtime.onMessage.removeListener(updateIsValidPage);
+            chrome.storage.onChanged.removeListener(onStorageChanged);
         };
     }, []);
 
     const updateIsValidPage = (message) => {
         if (message.isLeetCodeProblem !== undefined) {
             setIsValidPage(message.isLeetCodeProblem);
+        }
+        // Clear chat history when the user navigates to a different LeetCode problem
+        if (message.problemSlug && message.problemSlug !== currentProblemRef.current) {
+            currentProblemRef.current = message.problemSlug;
+            setMessages([]);
+            setShowSuggestions(true);
         }
     };
 
@@ -208,10 +240,31 @@ function App() {
         return (
             <div className="h-screen flex flex-col">
                 <div className="p-2 border-b flex justify-between items-center">
-                    <Button variant="ghost" size="icon" onClick={() => window.open(OPTIONS_PAGE)}>
-                        <Info className="h-5 w-5" />
-                    </Button>
-                    <ReportIssueButton />
+                    <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => window.open(OPTIONS_PAGE)}>
+                            <Info className="h-5 w-5" />
+                        </Button>
+                        {/* Sync status badge — green checkmark or red X based on last GitHub sync */}
+                        {syncStatus === "success" && <CheckCircle2 className="h-4 w-4 text-green-500" title="Last sync succeeded" />}
+                        {syncStatus === "error" && <XCircle className="h-4 w-4 text-red-500" title="Last sync failed" />}
+                    </div>
+                    <div className="flex items-center gap-1">
+                        {/* Clear chat button — only visible when there are messages */}
+                        {messages.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                    setMessages([]);
+                                    setShowSuggestions(true);
+                                }}
+                                title="Clear chat"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
+                        <ReportIssueButton />
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-hidden relative">
@@ -245,7 +298,7 @@ function App() {
                 </div>
 
                 <div className="border-t">
-                    <div className="p-4 flex gap-2">
+                    <div className="p-4 pb-1 flex gap-2">
                         <Input
                             placeholder={"Ask a question..."}
                             value={input}
@@ -276,6 +329,10 @@ function App() {
                             </Button>
                         )}
                     </div>
+                    {/* Live character count — turns red when the limit is reached */}
+                    <p className={`text-[10px] px-4 pb-2 ${input.length >= MAX_CHAR_LIMIT ? "text-red-500" : "text-muted-foreground"}`}>
+                        {input.length}/{MAX_CHAR_LIMIT}
+                    </p>
                 </div>
 
                 <GetPremiumPopUp

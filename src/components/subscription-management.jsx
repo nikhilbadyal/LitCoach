@@ -75,7 +75,11 @@ function SubscriptionManagementCard() {
                     </CardTitle>
                     <CardDescription>
                         {hasPremium ? "Next billing date: " : "Expiration date: "}{" "}
-                        {nextBillingDate ? new Date(nextBillingDate).toLocaleDateString() : "Loading..."}
+                        {nextBillingDate
+                            ? new Date(nextBillingDate).toString() === "Invalid Date"
+                                ? nextBillingDate
+                                : new Date(nextBillingDate).toLocaleDateString()
+                            : "Loading..."}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

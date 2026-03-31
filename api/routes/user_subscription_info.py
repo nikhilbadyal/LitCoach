@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from api.db import resolve_user_by_google_id
 from api.payment import get_next_billing_date, has_active_subscription
-from api.config import logger
+from api.config import logger, settings
 
 router = APIRouter()
 
@@ -15,10 +15,12 @@ def user_subscription_info(google_user_id: str):
             raise HTTPException(404, detail="User not found")
 
         user_data = {
-            "has_premium": user.has_premium,
+            "has_premium": user.has_premium or settings.SELF_HOST,
         }
 
-        if user.subscription_id and has_active_subscription(user.subscription_id):
+        if settings.SELF_HOST:
+            user_data["billing_date"] = "Self Hosted (Unlimited)"
+        elif user.subscription_id and has_active_subscription(user.subscription_id):
             billing_date = get_next_billing_date(user.subscription_id)
             user_data["billing_date"] = billing_date
 

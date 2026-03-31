@@ -144,7 +144,11 @@ function SubscriptionCard() {
                     </CardTitle>
                     <CardDescription>
                         Next billing date:{" "}
-                        {userData.billingDate ? new Date(userData.billingDate).toLocaleDateString() : "Loading..."}
+                        {userData.billingDate 
+                            ? new Date(userData.billingDate).toString() === "Invalid Date"
+                                ? userData.billingDate
+                                : new Date(userData.billingDate).toLocaleDateString() 
+                            : "Loading..."}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

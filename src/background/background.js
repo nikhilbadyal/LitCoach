@@ -4,7 +4,7 @@ console.log("Background script running!");
 
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === chrome.runtime.OnInstalledReason.INSTALL) {
-        chrome.runtime.setUninstallURL("https://forms.gle/p2Qv8c7uJSgpK6zB7");
+        chrome.runtime.setUninstallURL("https://www.nikhilbadyal.com/#contact");
     }
 });
 
@@ -33,6 +33,7 @@ const LEETCODE_SUBMISSION_DETAILS_QUERY = `
             }
             runtimeError
             compileError
+            statusDisplay
         }
     }
 `;
@@ -42,7 +43,11 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(consol
 // Function to check if the current tab is a LeetCode problem
 function checkIfLeetCodeProblem(tab) {
     const isLeetCodeProblem = tab.url && tab.url.startsWith(LEETCODE_PROBLEM_URL);
-    chrome.runtime.sendMessage({ isLeetCodeProblem }, () => {
+    // Extract the problem slug so the sidepanel can detect problem switches and clear stale chat
+    const problemSlug = isLeetCodeProblem
+        ? tab.url.replace(LEETCODE_PROBLEM_URL, "").split("/")[0]
+        : null;
+    chrome.runtime.sendMessage({ isLeetCodeProblem, problemSlug }, () => {
         const errorMessage = chrome.runtime.lastError?.message;
         // Ignore these errors since sidepanel may not always be open
         if (
@@ -138,6 +143,11 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                     return;
                 }
 
+                if (details.statusDisplay !== "Accepted") {
+                    console.log(`Submission was ${details.statusDisplay}, not syncing.`);
+                    return;
+                }
+
                 const now = new Date();
                 const submissionDate = new Date(details.timestamp * 1000);
                 if (
@@ -158,8 +168,37 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                         github_access_token: data.github_access_token,
                     });
                     console.log("Successfully submitted problem to user's selected github repo");
+                    // Store the last sync result so the sidepanel badge and GitHub card can display it
+                    chrome.storage.local.set({
+                        last_sync_status: "success",
+                        last_synced_file: `${details.question.titleSlug}/${details.lang.name}`
+                    });
                 } catch (error) {
-                    console.error("Error submitting problem to user's selected github repo", error);
+                    console.error("Error submitting problem to GitHub via API", error);
+                    // Store sync failure so the sidepanel header badge turns red
+                    chrome.storage.local.set({ last_sync_status: "error" });
+
+                    if (error.response?.status === 401 || error.response?.status === 403) {
+                        console.error("GitHub access token is revoked or lacks permissions. Clearing...");
+                        chrome.storage.sync.remove(["github_access_token"]);
+                        chrome.action.setBadgeText({ text: "!" });
+                        chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
+                        return;
+                    }
+
+                    // Network error or 5xx server error - queue it up!
+                    if (!error.response || error.response.status >= 500) {
+                        console.log("Queueing submission for offline retry...");
+                        chrome.storage.local.get(["sync_queue"], (result) => {
+                            const queue = result.sync_queue || [];
+                            queue.push({
+                                details,
+                                timestamp: Date.now()
+                            });
+                            chrome.storage.local.set({ sync_queue: queue });
+                            chrome.alarms.create("flushSyncQueue", { delayInMinutes: 1 });
+                        });
+                    }
                 }
             }
         });
@@ -182,10 +221,63 @@ chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
                 sendResponse(true);
             } catch (error) {
                 console.error("User may not be authenticated with GitHub", error);
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    chrome.storage.sync.remove(["github_access_token"]);
+                    chrome.action.setBadgeText({ text: "!" });
+                    chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
+                }
                 sendResponse(false);
             }
         });
 
         return true;
+    }
+});
+
+// Process offline sync queue
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === "flushSyncQueue") {
+        console.log("Flushing offline sync queue...");
+        chrome.storage.local.get(["sync_queue"], async (localData) => {
+            const queue = localData.sync_queue || [];
+            if (queue.length === 0) return;
+
+            chrome.storage.sync.get(["selected_repo_id", "github_access_token"], async (syncData) => {
+                if (!syncData.github_access_token || !syncData.selected_repo_id) return;
+
+                const remainingQueue = [];
+                for (const item of queue) {
+                    try {
+                        await axios.post(`${API_URL}/user/github/submission`, {
+                            ...item.details,
+                            github_repo_id: syncData.selected_repo_id,
+                            github_access_token: syncData.github_access_token,
+                        });
+                        console.log("Successfully flushed submission from queue!");
+                    } catch (error) {
+                        console.error("Failed to flush submission from queue", error);
+                        if (error.response?.status === 401 || error.response?.status === 403) {
+                            console.error("GitHub access token invalid or lacks permissions during queue flush. Clearing...");
+                            chrome.storage.sync.remove(["github_access_token"]);
+                            chrome.action.setBadgeText({ text: "!" });
+                            chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
+                            remainingQueue.push(...queue.slice(queue.indexOf(item)));
+                            break;
+                        }
+
+                        if (!error.response || error.response.status >= 500) {
+                            remainingQueue.push(item);
+                        }
+                    }
+                }
+
+                chrome.storage.local.set({ sync_queue: remainingQueue });
+
+                if (remainingQueue.length > 0) {
+                    console.log(`${remainingQueue.length} items remaining in queue. Retrying in 5 mins.`);
+                    chrome.alarms.create("flushSyncQueue", { delayInMinutes: 5 });
+                }
+            });
+        });
     }
 });

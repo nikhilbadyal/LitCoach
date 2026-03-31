@@ -8,26 +8,69 @@ import axios from "axios";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-const getGoogleUserInfo = () =>
+const googleWebAuthLogin = () =>
     new Promise((resolve, reject) => {
-        chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }, (info) => {
-            if (chrome.runtime.lastError || !info.id) {
-                reject(chrome.runtime.lastError || new Error("No user ID found"));
-            } else {
-                resolve(info);
-            }
-        });
-    });
+        const manifest = chrome.runtime.getManifest();
+        const clientId = manifest.oauth2?.client_id;
 
-const googleInteractiveLogin = () =>
-    new Promise((resolve, reject) => {
-        chrome.identity.getAuthToken({ interactive: true }, (token) => {
-            if (chrome.runtime.lastError || !token) {
-                reject(chrome.runtime.lastError || new Error("Could not obtain token"));
-            } else {
-                resolve(token);
+        if (!clientId) {
+            return reject(new Error("OAuth2 client_id not found in manifest"));
+        }
+
+        const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+        // Chrome automatically generates the correct chromiumapp.org URL
+        const redirectUri = chrome.identity.getRedirectURL();
+
+        authUrl.searchParams.set("client_id", clientId);
+        authUrl.searchParams.set("redirect_uri", redirectUri);
+        authUrl.searchParams.set("response_type", "token");
+        authUrl.searchParams.set("scope", "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email");
+        authUrl.searchParams.set("prompt", "select_account");
+
+        chrome.identity.launchWebAuthFlow(
+            {
+                url: authUrl.href,
+                interactive: true,
+            },
+            async (redirectUrl) => {
+                if (chrome.runtime.lastError || !redirectUrl) {
+                    return reject(chrome.runtime.lastError || new Error("Auth flow failed"));
+                }
+
+                try {
+                    // Extract token from URL hash fragment
+                    const hash = new URL(redirectUrl).hash.substring(1);
+                    const params = new URLSearchParams(hash);
+                    const accessToken = params.get("access_token");
+
+                    if (!accessToken) {
+                        return reject(new Error("No access token found in redirect URL"));
+                    }
+
+                    // Fetch profile info returning { sub, email, name ... }
+                    const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                        },
+                    });
+
+                    if (!response.ok) {
+                        return reject(new Error("Failed to fetch user profile from Google API"));
+                    }
+
+                    const userInfo = await response.json();
+                    
+                    if (!userInfo.sub) {
+                        return reject(new Error("Google did not return a user ID (sub)"));
+                    }
+
+                    // Resolve mapping 'sub' to 'id' to be backwards compatible with the codebase
+                    resolve({ id: userInfo.sub, email: userInfo.email });
+                } catch (err) {
+                    reject(err);
+                }
             }
-        });
+        );
     });
 
 const storeGoogleUserID = (googleUserId) =>
@@ -55,35 +98,44 @@ export const GoogleAuth = ({ children }) => {
     const [isLoading, setIsLoading] = useState(false);
     const { toast } = useToast();
 
-    const handleGoogleAuth = useCallback(async () => {
+    const handleGoogleAuth = useCallback(async (interactive = false) => {
         setIsLoading(true);
-        let googleInfo = null;
 
-        try {
-            googleInfo = await getGoogleUserInfo();
-        } catch (error) {
-            console.error("Error fetching Google user info:", error);
+        const storedGoogleUserId = await getStoredGoogleUserID();
+        const storedUserId = await getStoredLegacyID();
+
+        if (storedGoogleUserId && !interactive) {
+            try {
+                // Background check to ensure they are registered in the local DB
+                await axios.post(`${API_URL}/user/register`, {
+                    google_user_id: storedGoogleUserId,
+                    old_user_id: storedUserId || null,
+                });
+            } catch (e) {
+                // If it fails, silent ignore, they are probably still registered, database might be down
+            }
+            setIsAuthenticated(true);
+            setIsLoading(false);
+            return;
         }
 
-        if (!googleInfo || !googleInfo.id) {
-            try {
-                await googleInteractiveLogin();
-                googleInfo = await getGoogleUserInfo();
-            } catch (error) {
-                console.error("Interactive login failed:", error);
+        let googleInfo = null;
+        try {
+            googleInfo = await googleWebAuthLogin();
+        } catch (error) {
+            console.error("Authentication failed:", error);
+            if (interactive) {
                 toast({
                     title: "Authentication Failed",
-                    description: "Could not sign in with Google. Try again manually.",
+                    description: "Could not sign in with Google. Try again.",
                     variant: "destructive",
                 });
-                setIsLoading(false);
-                return;
             }
+            setIsLoading(false);
+            return;
         }
 
         const googleUserId = googleInfo.id;
-        const storedGoogleUserId = await getStoredGoogleUserID();
-        const storedUserId = await getStoredLegacyID();
 
         if (googleUserId && googleUserId === storedGoogleUserId) {
             setIsAuthenticated(true);
@@ -94,7 +146,7 @@ export const GoogleAuth = ({ children }) => {
         try {
             await axios.post(`${API_URL}/user/register`, {
                 google_user_id: googleUserId,
-                old_user_id: storedUserId || null, // For legacy users to migrate
+                old_user_id: storedUserId || null,
             });
 
             await storeGoogleUserID(googleUserId);
@@ -106,7 +158,7 @@ export const GoogleAuth = ({ children }) => {
             console.error("Authentication error:", err);
             toast({
                 title: "Authentication Failed",
-                description: "Could not sign in with Google. Try again manually.",
+                description: "Could not register user. Try again manually.",
                 variant: "destructive",
             });
         } finally {
@@ -115,7 +167,7 @@ export const GoogleAuth = ({ children }) => {
     }, [toast]);
 
     useEffect(() => {
-        handleGoogleAuth();
+        handleGoogleAuth(false);
     }, [handleGoogleAuth]);
 
     if (isLoading) {
@@ -133,7 +185,7 @@ export const GoogleAuth = ({ children }) => {
                 <h2 className="text-2xl font-semibold text-foreground">Authentication Required</h2>
                 <p className="text-sm text-muted-foreground">Authenticate with Google to use this extension</p>
 
-                <Button onClick={handleGoogleAuth} className="w-full" variant="outline">
+                <Button onClick={() => handleGoogleAuth(true)} className="w-full" variant="outline">
                     <img src="/google.svg" alt="Google Logo" className="mr-1 h-4 w-4" />
                     Sign in with Google
                 </Button>

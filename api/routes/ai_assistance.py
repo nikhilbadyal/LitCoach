@@ -36,7 +36,7 @@ def ai_assistance(request: AIAssistance):
         request.google_user_id
     )
 
-    if not user.has_premium and not has_active_subscription(user.subscription_id):
+    if not settings.SELF_HOST and not user.has_premium and not has_active_subscription(user.subscription_id):
         if user.tokens_used_in_past_5_hours >= FIVE_HOUR_LIMIT:
             next_use_time = datetime.fromisoformat(
                 user.last_5_hour_cooldown_reset
@@ -61,10 +61,10 @@ def ai_assistance(request: AIAssistance):
             detail="Invalid response style. Must be 'normal', 'concise', or 'interview'",
         )
 
-    if request.model_name not in ["gpt-4o", "o3-mini"]:
+    if request.model_name not in ["gpt-4o", "o3-mini", "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemini-2.5-pro", "gemini-2.5-flash"]:
         raise HTTPException(
             status_code=400,
-            detail="Invalid model name. Must be either 'gpt-4o', or 'o3-mini'",
+            detail="Invalid model name. Must be a supported OpenAI, Groq, or Gemini model.",
         )
 
     try:
@@ -78,6 +78,8 @@ def ai_assistance(request: AIAssistance):
 
         response = generate_chat_response(
             openai_api_key=settings.OPENAI_KEY,
+            groq_api_key=settings.GROQ_API_KEY,
+            gemini_api_key=settings.GEMINI_API_KEY,
             messages=prompt,
             model_name=request.model_name,
         )

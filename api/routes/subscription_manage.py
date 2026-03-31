@@ -8,7 +8,7 @@ from api.payment import (
     create_checkout_session,
     get_next_billing_date,
 )
-from api.config import logger
+from api.config import logger, settings
 
 router = APIRouter()
 
@@ -19,6 +19,16 @@ def subscription_manage(google_user_id: str):
         user = resolve_user_by_google_id(google_user_id)
         if not user:
             raise HTTPException(404, detail="User not found")
+
+        if settings.SELF_HOST:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "customer_portal_url": "https://github.com/rezabrizi/LitCoach",
+                    "next_billing_date": "Self Hosted (Unlimited)",
+                    "has_premium": True,
+                },
+            )
 
         if user.subscription_id and has_active_subscription(user.subscription_id):
             return JSONResponse(
