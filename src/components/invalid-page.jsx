@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@hooks/use-toast";
 import ReportIssueButton from "@components/report-issue";
 
-const OPTIONS_PAGE = "chrome-extension://pbkbbpmpbidfjbcapgplbdogiljdechf/src/options/index.html";
+// Dynamically construct the options page URL so it works across reinstalls and ID changes
+const OPTIONS_PAGE = chrome.runtime.getURL("src/options/index.html");
 const LEETCODE_GRAPHQL_URL = "https://leetcode.com/graphql";
 
 const DIFFICULTY_OPTIONS = [

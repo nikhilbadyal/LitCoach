@@ -1,27 +1,54 @@
+import { useState } from "react";
 import { Button } from "@components/ui/button";
-import { ExternalLink, Unplug } from "lucide-react";
+import { ExternalLink, Unplug, Loader2 } from "lucide-react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@components/ui/hover-card";
 
+// Link to GitHub's official guide for fully revoking OAuth app access
 const GITHUB_OAUTH_REMOVAL_GUIDE =
     "https://docs.github.com/en/apps/oauth-apps/maintaining-oauth-apps/deleting-an-oauth-app";
 
 function DisconnectGitHubAccount() {
+    // Track the disconnect action to show a loading spinner
+    const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+    // Clear all GitHub-related data from extension storage and reload the page
+    const handleDisconnect = async () => {
+        setIsDisconnecting(true);
+        await new Promise((resolve) =>
+            chrome.storage.sync.remove(
+                ["github_access_token", "github_user_data", "selected_repo_id", "sync_enabled"],
+                resolve,
+            ),
+        );
+        // Reload so the GitHub sync card resets to the "Sign in" state
+        window.location.reload();
+    };
+
     return (
         <HoverCard>
             <HoverCardTrigger>
-                <Button variant="link" className="font-light text-xs">
-                    <Unplug />
-                    Disconnect Account?
+                <Button variant="link" className="font-light text-xs" disabled={isDisconnecting}>
+                    {isDisconnecting ? <Loader2 className="animate-spin" /> : <Unplug />}
+                    {isDisconnecting ? "Disconnecting..." : "Disconnect Account?"}
                 </Button>
             </HoverCardTrigger>
             <HoverCardContent className="w-80">
                 <div className="space-y-2">
                     <p className="text-sm">Want to disconnect your account?</p>
                     <p className="text-xs text-muted-foreground">
-                        Remove LitCoach as an authorized OAuth app from your GitHub account. This will revoke
-                        LitCoach&apos;s access to the initial permissions requested and disconnect your GitHub
-                        account.
+                        This will clear your GitHub token from the extension. To also revoke
+                        LitCoach&apos;s access on GitHub itself, visit the guide below.
                     </p>
+                    {/* Actually disconnect by clearing the stored token */}
+                    <Button
+                        size="sm"
+                        variant="destructive"
+                        className="w-full text-xs"
+                        onClick={handleDisconnect}
+                        disabled={isDisconnecting}
+                    >
+                        Disconnect Now
+                    </Button>
                     <Button
                         size="small"
                         variant="link"

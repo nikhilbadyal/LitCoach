@@ -9,7 +9,7 @@ from api.db import (
     reset_tokens_if_needed,
     resolve_user_by_google_id,
 )
-from api.ai_client import generate_chat_response, create_ai_chat_prompt
+from api.ai_client import generate_chat_response, create_ai_chat_prompt, PROVIDER_REGISTRY
 from api.payment import has_active_subscription
 from api.config import settings, logger
 
@@ -31,6 +31,7 @@ def ai_assistance(request: AIAssistance):
             detail="User not found",
         )
 
+    # Reset expired token counters in the DB, then re-fetch to get updated values
     reset_tokens_if_needed(user)
     user = resolve_user_by_legacy_user_id(request.user_id) or resolve_user_by_google_id(
         request.google_user_id
@@ -61,10 +62,11 @@ def ai_assistance(request: AIAssistance):
             detail="Invalid response style. Must be 'normal', 'concise', or 'interview'",
         )
 
-    if request.model_name not in ["gpt-4o", "o3-mini", "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemini-2.5-pro", "gemini-2.5-flash"]:
+    # Validate model name against the provider registry — single source of truth
+    if request.model_name not in PROVIDER_REGISTRY:
         raise HTTPException(
             status_code=400,
-            detail="Invalid model name. Must be a supported OpenAI, Groq, or Gemini model.",
+            detail=f"Invalid model name. Supported models: {', '.join(PROVIDER_REGISTRY.keys())}",
         )
 
     try:

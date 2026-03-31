@@ -1,5 +1,4 @@
 import GitHubSubmissionSync from "@components/github-submission-sync";
-// import SubscriptionCard from "@components/subscription-card";
 import ReportIssueButton from "@components/report-issue";
 import PrivacyPolicyButton from "@components/privacy-policy";
 import SubscriptionManagementCard from "@/components/subscription-management";

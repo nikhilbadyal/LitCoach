@@ -47,8 +47,13 @@ function App() {
 
     useEffect(() => {
         const fetchData = async () => {
-            const response = await fetch(`${API_URL}/health`);
-            if (!response.ok) throw new Error("Failed to ping the server");
+            // Check backend health — don't block UI setup if backend is temporarily down
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                if (!response.ok) console.warn("Backend health check failed");
+            } catch (error) {
+                console.warn("Backend is unreachable — AI features will be unavailable", error);
+            }
 
             const [currentTab] = await new Promise((resolve) => {
                 chrome.tabs.query({ active: true, currentWindow: true }, resolve);
