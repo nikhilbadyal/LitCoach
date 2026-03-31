@@ -1,15 +1,4 @@
-version: '3.8'
-
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: litcoach-mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-    restart: unless-stopped
-
   api:
     build:
       context: .
@@ -17,16 +6,10 @@ services:
     container_name: litcoach-api
     ports:
       - "8000:8000"
-    environment:
-      # Inject the direct internal container connection string for mongodb
-      - MONGO_DB_URI=mongodb://mongodb:27017/litcoach
-    # Allows it to inherit other variables (like OPENAI_KEY) you put in your local .env
     env_file:
       - .env
     volumes:
       - ./api:/app/api
-    depends_on:
-      - mongodb
     restart: unless-stopped
 
 volumes:
