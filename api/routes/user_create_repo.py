@@ -10,6 +10,10 @@ router = APIRouter()
 
 @router.post("/user/github/repo")
 def user_github_repo(request: CreateRepo):
+    # Log every call to this endpoint
+    logger.info("=== /user/github/repo endpoint called ===")
+    logger.info(f"Creating repo: {request.repo_name}")
+    
     try:
         user = None
         if request.user_id and not request.github_access_token:
