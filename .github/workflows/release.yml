@@ -1,0 +1,125 @@
+# GitHub Action workflow to build and publish the Chrome extension
+# This workflow runs on every push to build the extension and upload as artifact
+# When a tag is pushed (e.g., v0.1.2), it also creates a GitHub release
+name: Build and Release Extension
+
+# Trigger the workflow on every push to any branch or tag
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*.*.*'
+
+# Define the jobs to run in this workflow
+jobs:
+  build-and-release:
+    # Run on the latest Ubuntu runner
+    runs-on: ubuntu-latest
+    
+    # Define permissions needed for creating releases
+    permissions:
+      contents: write
+    
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+      
+      # Step 2: Set up Node.js environment
+      # Using Node.js 20 LTS for stability
+      - name: Setup Node.js
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: 'latest'
+          cache: 'npm'
+      
+      # Step 3: Install frontend dependencies
+      # This installs all packages defined in package.json
+      - name: Install dependencies
+        run: npm ci
+      
+      # Step 4: Create .env file from base64 encoded GitHub secret
+      # The .env file is stored as a base64 encoded secret in GitHub
+      # This decodes the secret and writes it to .env file
+      - name: Create .env file
+        run: |
+          echo "${{ secrets.ENV_BASE64 }}" | base64 --decode > .env
+        env:
+          # ENV_BASE64 secret must be set in GitHub repository settings
+          # To create: base64 -i .env | pbcopy (on macOS) or base64 .env (on Linux)
+          ENV_BASE64: ${{ secrets.ENV_BASE64 }}
+      
+      # Step 5: Build the extension
+      # This runs vite build which creates the dist folder
+      - name: Build extension
+        run: npm run build
+      
+      # Step 6: Extract version from tag
+      # Removes the 'v' prefix from the tag (e.g., v0.1.2 -> 0.1.2)
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      # Step 7: Package the extension as a zip file
+      # Creates litcoach.zip containing the dist folder for artifacts
+      # For tagged releases, creates litcoach-v0.1.2.zip with version number
+      - name: Package extension
+        run: |
+          cd dist
+          zip -r ../litcoach.zip .
+          cd ..
+      
+      # Step 8: Upload build artifact for all pushes
+      # This allows downloading the built extension from the Actions tab
+      # Artifacts are available for 90 days by default
+      # To download: Go to Actions tab → Click on workflow run → Scroll to Artifacts section
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: litcoach-extension-${{ github.sha }}
+          path: litcoach.zip
+          # Keep artifacts for 90 days
+          retention-days: 90
+      
+      # Step 9: Create versioned zip for releases (only for tags)
+      # This step only runs when a tag is pushed
+      - name: Create versioned release package
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cp litcoach.zip litcoach-v${{ steps.get_version.outputs.VERSION }}.zip
+      
+      # Step 10: Create GitHub Release (only for tags)
+      # Creates a new release with the packaged extension
+      # This step only runs when a tag is pushed
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2.6.1
+        with:
+          # Use the tag name as the release name
+          name: Release ${{ github.ref_name }}
+          # Mark as draft so you can review before publishing
+          draft: false
+          # Don't mark as pre-release by default
+          prerelease: false
+          # Generate release notes automatically from commits
+          generate_release_notes: true
+          # Attach the zip file to the release
+          files: |
+            litcoach-v${{ steps.get_version.outputs.VERSION }}.zip
+          # Add installation instructions to the release body
+          body: |
+            ## LitCoach Extension Release ${{ github.ref_name }}
+            
+            ### Installation Instructions
+            
+            1. Download the `litcoach-v${{ steps.get_version.outputs.VERSION }}.zip` file below
+            2. Extract the zip file to a folder on your computer
+            3. Open Chrome and navigate to `chrome://extensions/`
+            4. Enable "Developer mode" (toggle in top right)
+            5. Click "Load unpacked"
+            6. Select the extracted folder
+            
+            ### What's Changed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
