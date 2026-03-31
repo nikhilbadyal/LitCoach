@@ -1,7 +1,7 @@
 import { Button } from "@components/ui/button";
 import { FileText } from "lucide-react";
 
-const PRIVACY_POLICY = "https://github.com/rezabrizi/LitCoach/blob/main/privacy-policy.md";
+const PRIVACY_POLICY = "https://github.com/nikhilbadyal/LitCoach/blob/main/privacy-policy.md";
 
 function PrivacyPolicyButton() {
     return (

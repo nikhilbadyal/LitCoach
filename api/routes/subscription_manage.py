@@ -24,7 +24,7 @@ def subscription_manage(google_user_id: str):
             return JSONResponse(
                 status_code=200,
                 content={
-                    "customer_portal_url": "https://github.com/rezabrizi/LitCoach",
+                    "customer_portal_url": "https://github.com/nikhilbadyal/LitCoach",
                     "next_billing_date": "Self Hosted (Unlimited)",
                     "has_premium": True,
                 },

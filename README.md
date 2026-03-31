@@ -32,7 +32,7 @@ Ensure you have the following installed and set up before proceeding:
 1. Clone the repository:
 
     ```bash
-    git clone https://github.com/rezabrizi/LitCoach.git
+    git clone https://github.com/nikhilbadyal/LitCoach.git
     cd LitCoach
     ```
 
