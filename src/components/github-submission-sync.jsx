@@ -102,11 +102,21 @@ const GitHubSubmissionSync = () => {
             }
         } catch (error) {
             console.error("Authentication check failed", error);
+            
+            // Show user-friendly error for rate limiting
+            if (error.response?.status === 429) {
+                toast({
+                    title: "GitHub Rate Limit Exceeded",
+                    description: "Too many requests to GitHub. Please try again later.",
+                    variant: "destructive",
+                });
+            }
+            
             setIsAuthenticated(false);
         } finally {
             setIsDataLoading(false);
         }
-    }, []);
+    }, [toast]);
 
     const handleGitHubAuth = useCallback(async () => {
         setIsActionLoading(true);
@@ -167,6 +177,17 @@ const GitHubSubmissionSync = () => {
             });
         } catch (error) {
             console.error("Error creating repository", error);
+            
+            // Handle rate limiting
+            if (error.response?.status === 429) {
+                toast({
+                    title: "GitHub Rate Limit Exceeded",
+                    description: "Too many requests to GitHub. Please try again later.",
+                    variant: "destructive",
+                });
+                return;
+            }
+            
             toast({
                 title: "Error",
                 description:

@@ -40,8 +40,27 @@ def get_user_info_from_github(access_token: str) -> dict:
     url = "https://api.github.com/user"
     headers = {"Authorization": f"token {access_token}"}
 
+    # Log the API call
+    from api.config import logger
+    logger.info(f"Making GitHub API call to: {url}")
+
     try:
         response = requests.get(url, headers=headers)
+        
+        # Log rate limit info from response headers
+        rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
+        rate_limit_limit = response.headers.get("X-RateLimit-Limit", "unknown")
+        rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
+        logger.info(f"GitHub API Rate Limit: {rate_limit_remaining}/{rate_limit_limit} remaining (resets at {rate_limit_reset})")
+        
+        # Check for rate limit error and provide helpful message
+        if response.status_code == 403:
+            if rate_limit_remaining == "0":
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+                )
+        
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -56,13 +75,33 @@ def get_user_github_repos(access_token: str) -> List[dict]:
     headers = {"Authorization": f"token {access_token}"}
     params = {"affiliation": "owner", "per_page": 100}
 
+    # Log the API call
+    from api.config import logger
+    logger.info(f"Making GitHub API call to: {url}")
+
     try:
         repos = []
         page = 1
         while True:
+            logger.info(f"Fetching repos page {page}")
             response = requests.get(
                 url, headers=headers, params={**params, "page": page}
             )
+            
+            # Log rate limit info from response headers
+            rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
+            rate_limit_limit = response.headers.get("X-RateLimit-Limit", "unknown")
+            rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
+            logger.info(f"GitHub API Rate Limit: {rate_limit_remaining}/{rate_limit_limit} remaining (resets at {rate_limit_reset})")
+            
+            # Check for rate limit error and provide helpful message
+            if response.status_code == 403:
+                if rate_limit_remaining == "0":
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+                    )
+            
             response.raise_for_status()
             page_repos = response.json()
 
@@ -71,7 +110,13 @@ def get_user_github_repos(access_token: str) -> List[dict]:
 
             repos.extend(page_repos)
             page += 1
+            
+            # Safety check to prevent infinite loops
+            if page > 100:
+                logger.warning(f"Stopped fetching repos after 100 pages (10,000 repos)")
+                break
 
+        logger.info(f"Total repos fetched: {len(repos)}")
         return repos
     except requests.RequestException as e:
         raise HTTPException(

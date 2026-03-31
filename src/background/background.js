@@ -2,6 +2,36 @@ import axios from "axios";
 
 console.log("Background script running!");
 
+// Add request interceptor to log all GitHub API calls
+axios.interceptors.request.use((config) => {
+    if (config.url?.includes('api.github.com')) {
+        console.log(`[GitHub API Request] ${config.method?.toUpperCase()} ${config.url}`);
+        console.trace('Call stack:'); // Shows where the call came from
+    }
+    return config;
+});
+
+// Add response interceptor to log rate limit info
+axios.interceptors.response.use(
+    (response) => {
+        if (response.config.url?.includes('api.github.com')) {
+            const remaining = response.headers['x-ratelimit-remaining'];
+            const limit = response.headers['x-ratelimit-limit'];
+            const reset = response.headers['x-ratelimit-reset'];
+            console.log(`[GitHub API Response] Rate Limit: ${remaining}/${limit} remaining (resets at ${new Date(reset * 1000).toLocaleString()})`);
+        }
+        return response;
+    },
+    (error) => {
+        if (error.config?.url?.includes('api.github.com')) {
+            const remaining = error.response?.headers['x-ratelimit-remaining'];
+            const limit = error.response?.headers['x-ratelimit-limit'];
+            console.error(`[GitHub API Error] ${error.response?.status} - Rate Limit: ${remaining}/${limit} remaining`);
+        }
+        return Promise.reject(error);
+    }
+);
+
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === chrome.runtime.OnInstalledReason.INSTALL) {
         chrome.runtime.setUninstallURL("https://www.nikhilbadyal.com/#contact");
@@ -178,6 +208,22 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                     // Store sync failure so the sidepanel header badge turns red
                     chrome.storage.local.set({ last_sync_status: "error" });
 
+                    // Handle rate limiting - queue for later
+                    if (error.response?.status === 429) {
+                        console.log("GitHub API rate limit exceeded. Queueing submission for retry...");
+                        chrome.storage.local.get(["sync_queue"], (result) => {
+                            const queue = result.sync_queue || [];
+                            queue.push({
+                                details,
+                                timestamp: Date.now()
+                            });
+                            chrome.storage.local.set({ sync_queue: queue });
+                            // Retry in 10 minutes when rate limit might be reset
+                            chrome.alarms.create("flushSyncQueue", { delayInMinutes: 10 });
+                        });
+                        return;
+                    }
+
                     if (error.response?.status === 401 || error.response?.status === 403) {
                         console.error("GitHub access token is revoked or lacks permissions. Clearing...");
                         chrome.storage.sync.remove(["github_access_token"]);
@@ -208,21 +254,50 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
 // Check if the user has Github sync
 chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
     if (message.action === "isGitHubAuthenticated") {
-        chrome.storage.sync.get(["github_access_token"], async (stored) => {
+        chrome.storage.sync.get(["github_access_token", "github_user_data", "github_data_cache_time"], async (stored) => {
             if (!stored.github_access_token) return sendResponse(false);
 
+            // Cache GitHub user data for 5 minutes to reduce API calls
+            const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+            const now = Date.now();
+            const cacheTime = stored.github_data_cache_time || 0;
+            
+            // If we have cached data and it's still fresh, use it
+            if (stored.github_user_data && (now - cacheTime) < CACHE_DURATION) {
+                console.log("Using cached GitHub user data");
+                sendResponse(true);
+                return;
+            }
+
+            // Cache expired or doesn't exist, fetch fresh data
             try {
                 const { data } = await axios.get(`${API_URL}/user/github/info`, {
                     params: {
                         github_access_token: stored.github_access_token,
                     },
                 });
-                await chrome.storage.sync.set({ github_user_data: data });
+                await chrome.storage.sync.set({ 
+                    github_user_data: data,
+                    github_data_cache_time: now // Store cache timestamp
+                });
+                console.log("Fetched and cached fresh GitHub user data");
                 sendResponse(true);
             } catch (error) {
                 console.error("User may not be authenticated with GitHub", error);
+                
+                // Handle rate limiting specifically
+                if (error.response?.status === 429) {
+                    console.error("GitHub API rate limit exceeded");
+                    // If we have cached data, use it even if expired
+                    if (stored.github_user_data) {
+                        console.log("Using stale cached data due to rate limit");
+                        sendResponse(true);
+                        return;
+                    }
+                }
+                
                 if (error.response?.status === 401 || error.response?.status === 403) {
-                    chrome.storage.sync.remove(["github_access_token"]);
+                    chrome.storage.sync.remove(["github_access_token", "github_user_data", "github_data_cache_time"]);
                     chrome.action.setBadgeText({ text: "!" });
                     chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
                 }
