@@ -16,7 +16,7 @@ const getManifest = (env) => ({
         client_id: env.VITE_GOOGLE_CLIENT_ID || "883873953277-b3qo34v2o0tnhpe8uiprt10uguv8nog1.apps.googleusercontent.com",
         scopes: ["openid"],
     },
-    permissions: ["sidePanel", "tabs", "scripting", "activeTab", "storage", "identity", "identity.email", "alarms"],
+    permissions: ["sidePanel", "tabs", "scripting", "activeTab", "storage", "identity", "identity.email", "alarms", "notifications"],
     icons: {
         16: "icon16.png",
         32: "icon32.png",

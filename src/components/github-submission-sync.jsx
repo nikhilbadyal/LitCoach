@@ -291,7 +291,8 @@ const GitHubSubmissionSync = () => {
                         </p>
                         {/* Display the last successfully synced submission */}
                         {lastSynced && (
-                            <p className="text-xs text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                                <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
                                 Last synced: <span className="font-mono">{lastSynced}</span>
                             </p>
                         )}

@@ -19,6 +19,20 @@ axios.interceptors.response.use(
             const limit = response.headers['x-ratelimit-limit'];
             const reset = response.headers['x-ratelimit-reset'];
             console.log(`[GitHub API Response] Rate Limit: ${remaining}/${limit} remaining (resets at ${new Date(reset * 1000).toLocaleString()})`);
+            
+            // Store rate limit info and broadcast to UI
+            const rateLimitInfo = {
+                remaining: parseInt(remaining) || 0,
+                limit: parseInt(limit) || 5000,
+                reset: parseInt(reset) || 0
+            };
+            chrome.storage.local.set({ github_rate_limit: rateLimitInfo });
+            
+            // Broadcast to all extension pages
+            chrome.runtime.sendMessage({ 
+                action: "rateLimitUpdate", 
+                data: rateLimitInfo 
+            }).catch(() => {}); // Ignore if no listeners
         }
         return response;
     },
@@ -26,7 +40,24 @@ axios.interceptors.response.use(
         if (error.config?.url?.includes('api.github.com')) {
             const remaining = error.response?.headers['x-ratelimit-remaining'];
             const limit = error.response?.headers['x-ratelimit-limit'];
+            const reset = error.response?.headers['x-ratelimit-reset'];
             console.error(`[GitHub API Error] ${error.response?.status} - Rate Limit: ${remaining}/${limit} remaining`);
+            
+            // Store rate limit info even on error
+            if (remaining !== undefined) {
+                const rateLimitInfo = {
+                    remaining: parseInt(remaining) || 0,
+                    limit: parseInt(limit) || 5000,
+                    reset: parseInt(reset) || 0
+                };
+                chrome.storage.local.set({ github_rate_limit: rateLimitInfo });
+                
+                // Broadcast to all extension pages
+                chrome.runtime.sendMessage({ 
+                    action: "rateLimitUpdate", 
+                    data: rateLimitInfo 
+                }).catch(() => {});
+            }
         }
         return Promise.reject(error);
     }
@@ -211,6 +242,16 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                     // Handle rate limiting - queue for later
                     if (error.response?.status === 429) {
                         console.log("GitHub API rate limit exceeded. Queueing submission for retry...");
+                        
+                        // Show notification to user
+                        chrome.notifications.create({
+                            type: "basic",
+                            iconUrl: "/icon128.png",
+                            title: "GitHub Rate Limit Exceeded",
+                            message: "Your submission has been queued and will sync automatically when the limit resets.",
+                            priority: 1
+                        });
+                        
                         chrome.storage.local.get(["sync_queue"], (result) => {
                             const queue = result.sync_queue || [];
                             queue.push({
@@ -305,6 +346,14 @@ chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
             }
         });
 
+        return true;
+    }
+    
+    // Handle rate limit status requests
+    if (message.action === "getRateLimitStatus") {
+        chrome.storage.local.get(["github_rate_limit"], (result) => {
+            sendResponse(result.github_rate_limit || null);
+        });
         return true;
     }
 });
