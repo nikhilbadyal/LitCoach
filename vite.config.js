@@ -27,7 +27,12 @@ const getManifest = (env) => ({
     options_page: "src/options/index.html",
     side_panel: { default_path: "src/sidepanel/index.html" },
     background: { service_worker: "src/background/background.js", type: "module" },
-    host_permissions: ["https://leetcode.com/*"],
+    host_permissions: [
+        "https://leetcode.com/*",
+        "https://litcoach-v2.nikhilbadyal.com/*",
+        "http://127.0.0.1:8000/*",  // For local development
+        "http://localhost:8000/*",  // Alternative localhost
+    ],
     browser_specific_settings: {
         gecko: {
             id: "litcoach@rezabrizi.github.io", // Required for static OAuth Redirect URIs in Firefox!
