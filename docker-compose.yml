@@ -1,16 +1,13 @@
 services:
-  api:
+  litcoach-api:
     build:
       context: .
       dockerfile: backend.Dockerfile
     container_name: litcoach-api
     ports:
-      - "8000:8000"
+      - "8099:8000"
     env_file:
       - .env
     volumes:
       - ./api:/app/api
     restart: unless-stopped
-
-volumes:
-  mongo-data:
