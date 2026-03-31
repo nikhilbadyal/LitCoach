@@ -11,3 +11,9 @@ services:
     volumes:
       - ./api:/app/api
     restart: unless-stopped
+    networks:
+      - hilmail-network
+
+networks:
+  hilmail-network:
+    external: true
