@@ -5,6 +5,7 @@ name: Build and Release Extension
 
 # Trigger the workflow on every push to any branch or tag
 on:
+  workflow_dispatch:
   push:
     branches:
       - '**'
