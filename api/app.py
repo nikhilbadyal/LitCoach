@@ -20,16 +20,29 @@ from api.routes import (
 app = FastAPI()
 settings = get_settings()
 
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "chrome-extension://pbkbbpmpbidfjbcapgplbdogiljdechf",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configure CORS based on environment
+# In development (SELF_HOST=True), allow all origins for easier testing
+# In production, restrict to specific extension IDs
+if settings.SELF_HOST:
+    # Development mode: allow all origins including local extension IDs
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allow all origins in development
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Production mode: restrict to specific extension ID
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "chrome-extension://pbkbbpmpbidfjbcapgplbdogiljdechf",  # Production extension ID
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.get("/health")
