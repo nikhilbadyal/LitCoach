@@ -12,8 +12,8 @@ services:
       - ./api:/app/api
     restart: unless-stopped
     networks:
-      - hilmail-network
+      - homelab_network
 
 networks:
-  hilmail-network:
+  homelab_network:
     external: true
