@@ -50,15 +50,14 @@ def user_github_submission(request: LeetCodeSubmission):
     logger.info(f"Submission for problem: {request.question.titleSlug}")
     
     try:
-        user = None
-        if request.user_id and not request.github_access_token:
-            user = resolve_user_by_legacy_user_id(request.user_id)
-            if not user:
-                raise HTTPException(status_code=404, detail="User not found")
-
-        access_token = user.access_token if user else request.github_access_token
+        # Always require fresh access token from the request
+        # Database tokens may be expired or revoked
+        access_token = request.github_access_token
         if not access_token:
-            raise HTTPException(status_code=400, detail="Access token is required")
+            raise HTTPException(
+                status_code=401, 
+                detail="GitHub access token is required. Please re-authenticate with GitHub."
+            )
 
         repo = resolve_github_repo_id_to_repo_name(
             repo_id=request.github_repo_id,

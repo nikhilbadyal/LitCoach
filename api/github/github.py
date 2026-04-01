@@ -119,8 +119,15 @@ def get_user_github_repos(access_token: str) -> List[dict]:
         logger.info(f"Total repos fetched: {len(repos)}")
         return repos
     except requests.RequestException as e:
+        # Provide more specific error message for authentication failures
+        status_code = getattr(e.response, "status_code", 500)
+        if status_code == 401:
+            raise HTTPException(
+                status_code=401,
+                detail="GitHub authentication failed. Your access token may have expired or been revoked. Please re-authenticate with GitHub.",
+            )
         raise HTTPException(
-            status_code=getattr(e.response, "status_code", 500),
+            status_code=status_code,
             detail=f"Error fetching user's GitHub repositories: {str(e)}",
         )
 
