@@ -62,6 +62,7 @@ const GitHubSubmissionSync = () => {
     // Check if user is authenticated with GitHub and fetch their data
     // This function is called on component mount and after successful OAuth
     const checkGitHubAuth = useCallback(async () => {
+        console.log("[DEBUG] checkGitHubAuth called");
         try {
             setIsDataLoading(true);
             
