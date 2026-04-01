@@ -2,7 +2,27 @@ import requests
 from fastapi.exceptions import HTTPException
 import base64
 from typing import List
-from api.config import settings
+
+from api.config import logger, settings
+
+
+def _log_github_response(method: str, url: str, response: requests.Response) -> None:
+    """Log each GitHub HTTP response with rate-limit headers (REST + OAuth)."""
+    h = response.headers
+    logger.info(
+        "GitHub HTTP %s %s -> status=%s | "
+        "X-RateLimit-Limit=%s X-RateLimit-Remaining=%s X-RateLimit-Used=%s "
+        "X-RateLimit-Reset=%s X-RateLimit-Resource=%s Retry-After=%s",
+        method,
+        url,
+        response.status_code,
+        h.get("X-RateLimit-Limit", "-"),
+        h.get("X-RateLimit-Remaining", "-"),
+        h.get("X-RateLimit-Used", "-"),
+        h.get("X-RateLimit-Reset", "-"),
+        h.get("X-RateLimit-Resource", "-"),
+        h.get("Retry-After", "-"),
+    )
 
 
 def resolve_github_access_token(code: str) -> str:
@@ -19,6 +39,7 @@ def resolve_github_access_token(code: str) -> str:
 
     try:
         response = requests.post(url, headers=headers, json=data)
+        _log_github_response("POST", url, response)
         response.raise_for_status()
         access_token = response.json().get("access_token")
 
@@ -45,7 +66,8 @@ def get_user_info_from_github(access_token: str) -> dict:
 
     try:
         response = requests.get(url, headers=headers)
-        
+        _log_github_response("GET", url, response)
+
         if response.status_code in [403, 429]:
             rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
             if rate_limit_remaining == "0":
@@ -84,7 +106,8 @@ def get_user_github_repos(access_token: str) -> List[dict]:
             response = requests.get(
                 url, headers=headers, params={**params, "page": page}
             )
-            
+            _log_github_response("GET", f"{url}?page={page}", response)
+
             if response.status_code in [403, 429]:
                 rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
                 if rate_limit_remaining == "0":
@@ -158,6 +181,7 @@ def push_to_github(
     }
 
     response = requests.get(url, headers=headers)
+    _log_github_response("GET", url, response)
     sha = response.json().get("sha", None)
 
     if sha:
@@ -170,6 +194,7 @@ def push_to_github(
 
     try:
         response = requests.put(url, json=data, headers=headers)
+        _log_github_response("PUT", url, response)
         response.raise_for_status()
     except requests.RequestException as e:
         raise HTTPException(
@@ -203,6 +228,7 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
 
     try:
         response = requests.post(url, headers=headers, json=data)
+        _log_github_response("POST", url, response)
         response.raise_for_status()
         repo_info = response.json()
         repo_id = repo_info.get("id")
@@ -214,6 +240,7 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
             }
             tags_data = {"names": tags}
             tags_response = requests.put(tags_url, headers=tags_headers, json=tags_data)
+            _log_github_response("PUT", tags_url, tags_response)
             tags_response.raise_for_status()
 
         return repo_id
