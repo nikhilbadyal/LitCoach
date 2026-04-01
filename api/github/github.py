@@ -12,10 +12,13 @@ from api.config import logger, settings
 def _log_github_response(method: str, url: str, response: requests.Response) -> None:
     """Log each GitHub HTTP response with rate-limit headers (REST + OAuth)."""
     h = response.headers
-    logger.info(
+    log_message = (
         "GitHub HTTP %s %s -> status=%s | "
         "X-RateLimit-Limit=%s X-RateLimit-Remaining=%s X-RateLimit-Used=%s "
-        "X-RateLimit-Reset=%s X-RateLimit-Resource=%s Retry-After=%s",
+        "X-RateLimit-Reset=%s X-RateLimit-Resource=%s Retry-After=%s"
+    )
+    logger.info(
+        log_message,
         method,
         url,
         response.status_code,
@@ -26,6 +29,11 @@ def _log_github_response(method: str, url: str, response: requests.Response) -> 
         h.get("X-RateLimit-Resource", "-"),
         h.get("Retry-After", "-"),
     )
+    # Also print to stdout to ensure it's visible
+    print(f"[GITHUB API] {method} {url} -> {response.status_code} | Remaining={h.get('X-RateLimit-Remaining', '-')}")
+    import traceback
+    print(f"[CALL STACK]")
+    traceback.print_stack()
 
 
 def resolve_github_access_token(code: str) -> str:
