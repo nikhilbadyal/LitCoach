@@ -14,12 +14,42 @@ function DisconnectGitHubAccount() {
     // Clear all GitHub-related data from extension storage and reload the page
     const handleDisconnect = async () => {
         setIsDisconnecting(true);
+        
+        // Clear all sync storage (persistent across sessions)
         await new Promise((resolve) =>
             chrome.storage.sync.remove(
-                ["github_access_token", "github_user_data", "selected_repo_id", "sync_enabled"],
+                [
+                    "github_access_token",
+                    "github_user_data",
+                    "github_data_cache_time",
+                    "selected_repo_id",
+                    "sync_enabled"
+                ],
                 resolve,
             ),
         );
+        
+        // Clear all local storage (session data)
+        await new Promise((resolve) =>
+            chrome.storage.local.remove(
+                [
+                    "github_rate_limit",
+                    "sync_queue",
+                    "last_sync_status",
+                    "last_synced_file"
+                ],
+                resolve,
+            ),
+        );
+        
+        // Clear any processing flags (they start with "processing_")
+        chrome.storage.local.get(null, (items) => {
+            const processingKeys = Object.keys(items).filter(key => key.startsWith("processing_"));
+            if (processingKeys.length > 0) {
+                chrome.storage.local.remove(processingKeys);
+            }
+        });
+        
         // Reload so the GitHub sync card resets to the "Sign in" state
         window.location.reload();
     };

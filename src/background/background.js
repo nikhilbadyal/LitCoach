@@ -2,6 +2,27 @@ import axios from "axios";
 
 console.log("Background script running!");
 
+// Clean up stale processing flags on startup (older than 5 minutes)
+chrome.storage.local.get(null, (items) => {
+    const now = Date.now();
+    const staleKeys = [];
+    
+    Object.keys(items).forEach(key => {
+        if (key.startsWith("processing_")) {
+            const timestamp = items[key];
+            // If processing flag is older than 5 minutes, it's stale
+            if (now - timestamp > 5 * 60 * 1000) {
+                staleKeys.push(key);
+            }
+        }
+    });
+    
+    if (staleKeys.length > 0) {
+        console.log(`Cleaning up ${staleKeys.length} stale processing flags`);
+        chrome.storage.local.remove(staleKeys);
+    }
+});
+
 // Add request interceptor to log all GitHub API calls
 axios.interceptors.request.use((config) => {
     if (config.url?.includes('api.github.com')) {

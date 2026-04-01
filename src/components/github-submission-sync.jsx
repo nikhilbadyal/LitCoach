@@ -122,6 +122,34 @@ const GitHubSubmissionSync = () => {
 
     const handleGitHubAuth = useCallback(async () => {
         setIsActionLoading(true);
+        
+        // Clear any existing GitHub data before starting fresh auth
+        // This ensures clean state when switching accounts
+        await new Promise((resolve) =>
+            chrome.storage.sync.remove(
+                [
+                    "github_access_token",
+                    "github_user_data",
+                    "github_data_cache_time",
+                    "selected_repo_id",
+                    "sync_enabled"
+                ],
+                resolve,
+            ),
+        );
+        
+        await new Promise((resolve) =>
+            chrome.storage.local.remove(
+                [
+                    "github_rate_limit",
+                    "sync_queue",
+                    "last_sync_status",
+                    "last_synced_file"
+                ],
+                resolve,
+            ),
+        );
+        
         const redirectURL = chrome.identity.getRedirectURL();
         const authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectURL}&scope=read:user%20repo`;
 
