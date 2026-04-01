@@ -99,6 +99,10 @@ def get_user_info_from_github(access_token: str) -> dict:
 
 
 def get_user_github_repos(access_token: str) -> List[dict]:
+    """
+    Fetch all user's GitHub repositories with pagination.
+    Each page fetches up to 100 repos, so this can make multiple API calls.
+    """
     url = "https://api.github.com/user/repos"
     headers = {"Authorization": f"token {access_token}"}
     params = {"affiliation": "owner", "per_page": 100}
@@ -107,6 +111,7 @@ def get_user_github_repos(access_token: str) -> List[dict]:
         repos = []
         page = 1
         while True:
+            logger.info(f"Fetching repos page {page}...")
             response = requests.get(
                 url, headers=headers, params={**params, "page": page}
             )
@@ -130,16 +135,22 @@ def get_user_github_repos(access_token: str) -> List[dict]:
             
             response.raise_for_status()
             page_repos = response.json()
+            
+            logger.info(f"Page {page} returned {len(page_repos)} repos")
 
             if not page_repos:
+                logger.info(f"No more repos. Total fetched: {len(repos)}")
                 break
 
             repos.extend(page_repos)
             page += 1
             
+            # Safety limit to prevent infinite loops
             if page > 100:
+                logger.warning(f"Reached page limit of 100. Total repos fetched: {len(repos)}")
                 break
 
+        logger.info(f"Total repos fetched: {len(repos)}")
         return repos
     except HTTPException:
         raise
@@ -224,6 +235,11 @@ def push_to_github(
     repo_name: str,
     access_token: str,
 ) -> None:
+    """
+    Push file to GitHub with optimized API usage.
+    Uses optimistic PUT first, only fetches existing file if needed.
+    This reduces API calls from 2 per file to 1 per file in most cases.
+    """
     url = f"https://api.github.com/repos/{owner_name}/{repo_name}/contents/{file_path}"
     headers = {"Authorization": f"token {access_token}"}
     data = {
@@ -232,28 +248,66 @@ def push_to_github(
         "branch": "main",
     }
 
-    response = requests.get(url, headers=headers)
-    _log_github_response("GET", url, response)
-    sha = response.json().get("sha", None)
-
-    if sha:
-        existing_content = base64.b64decode(response.json().get("content")).decode(
-            "utf-8"
-        )
-        if existing_content == content:
-            return
-        data["sha"] = sha
-
     try:
+        # Optimistic approach: Try PUT first without checking if file exists
+        # This saves 1 API call per file when creating new files
         response = requests.put(url, json=data, headers=headers)
         _log_github_response("PUT", url, response)
+        
+        # Success - file created or updated
+        if response.status_code in [200, 201]:
+            return
+        
+        # File exists and needs SHA - fetch it and retry
+        if response.status_code == 422:
+            error_message = response.json().get("message", "")
+            if "sha" in error_message.lower():
+                # Fetch existing file to get SHA
+                get_response = requests.get(url, headers=headers)
+                _log_github_response("GET", url, get_response)
+                
+                if get_response.status_code == 200:
+                    file_data = get_response.json()
+                    sha = file_data.get("sha")
+                    
+                    # Check if content is already the same (avoid unnecessary update)
+                    existing_content = base64.b64decode(file_data.get("content", "")).decode("utf-8")
+                    if existing_content == content:
+                        logger.info(f"File {file_path} already has the same content. Skipping update.")
+                        return
+                    
+                    # Update with SHA
+                    data["sha"] = sha
+                    retry_response = requests.put(url, json=data, headers=headers)
+                    _log_github_response("PUT", url, retry_response)
+                    
+                    if retry_response.status_code in [200, 201]:
+                        return
+                    
+                    retry_response.raise_for_status()
+                else:
+                    get_response.raise_for_status()
         
         # Handle 409 Conflict - file was updated by another process (race condition)
         if response.status_code == 409:
             logger.warning(f"409 Conflict: File {file_path} was updated by another process. Skipping to avoid race condition.")
-            return  # Skip silently - the file is already updated
+            return
+        
+        # Handle rate limiting
+        if response.status_code in [403, 429]:
+            rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
+            if rate_limit_remaining == "0":
+                rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
+                reset_time = datetime.fromtimestamp(int(rate_limit_reset)).strftime("%Y-%m-%d %H:%M:%S") if rate_limit_reset != "unknown" else "unknown"
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"GitHub API rate limit exceeded. Resets at {reset_time}",
+                )
         
         response.raise_for_status()
+        
+    except HTTPException:
+        raise
     except requests.RequestException as e:
         # Don't raise error for 409 - it means the file is already updated
         if getattr(e.response, "status_code", None) == 409:
