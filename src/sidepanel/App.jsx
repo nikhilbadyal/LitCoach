@@ -9,6 +9,8 @@ import { Info, Send, StopCircle, Loader2, Trash2, CheckCircle2, XCircle } from "
 import ReportIssueButton from "@components/report-issue";
 import ReactMarkdown from "react-markdown";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/default-highlight";
+import { ThemeProvider } from "@/components/theme-provider";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // Dynamically construct the options page URL so it works across reinstalls and ID changes
 const OPTIONS_PAGE = chrome.runtime.getURL("src/options/index.html");
@@ -36,6 +38,8 @@ function App() {
     const [showSuggestions, setShowSuggestions] = useState(true);
     // Track the last GitHub sync status for the header badge ("success" | "error" | null)
     const [syncStatus, setSyncStatus] = useState(null);
+    // Track if a sync is currently in progress
+    const [isSyncing, setIsSyncing] = useState(false);
     const [premiumAlert, setPremiumAlert] = useState({
         open: false,
         alertMessage: null,
@@ -75,8 +79,9 @@ function App() {
             setGoogleUserID(google_user_id);
 
             // Read initial sync status for the header badge
-            chrome.storage.local.get(["last_sync_status"], (result) => {
+            chrome.storage.local.get(["last_sync_status", "is_syncing"], (result) => {
                 if (result.last_sync_status) setSyncStatus(result.last_sync_status);
+                if (result.is_syncing) setIsSyncing(result.is_syncing);
             });
         };
 
@@ -86,6 +91,9 @@ function App() {
         const onStorageChanged = (changes, area) => {
             if (area === "local" && changes.last_sync_status) {
                 setSyncStatus(changes.last_sync_status.newValue);
+            }
+            if (area === "local" && changes.is_syncing) {
+                setIsSyncing(changes.is_syncing.newValue);
             }
         };
         chrome.storage.onChanged.addListener(onStorageChanged);
@@ -243,34 +251,37 @@ function App() {
 
     if (isValidPage) {
         return (
-            <div className="h-screen flex flex-col">
-                <div className="p-2 border-b flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => window.open(OPTIONS_PAGE)}>
-                            <Info className="h-5 w-5" />
-                        </Button>
-                        {/* Sync status badge — green checkmark or red X based on last GitHub sync */}
-                        {syncStatus === "success" && <CheckCircle2 className="h-4 w-4 text-green-500" title="Last sync succeeded" />}
-                        {syncStatus === "error" && <XCircle className="h-4 w-4 text-red-500" title="Last sync failed" />}
-                    </div>
-                    <div className="flex items-center gap-1">
-                        {/* Clear chat button — only visible when there are messages */}
-                        {messages.length > 0 && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                    setMessages([]);
-                                    setShowSuggestions(true);
-                                }}
-                                title="Clear chat"
-                            >
-                                <Trash2 className="h-4 w-4" />
+            <ThemeProvider defaultTheme="system" storageKey="litcoach-theme">
+                <div className="h-screen flex flex-col">
+                    <div className="p-2 border-b flex justify-between items-center">
+                        <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => window.open(OPTIONS_PAGE)}>
+                                <Info className="h-5 w-5" />
                             </Button>
-                        )}
-                        <ReportIssueButton />
+                            {/* Sync status indicators */}
+                            {isSyncing && <Loader2 className="h-4 w-4 text-blue-500 animate-spin" title="Syncing to GitHub..." />}
+                            {!isSyncing && syncStatus === "success" && <CheckCircle2 className="h-4 w-4 text-green-500" title="Last sync succeeded" />}
+                            {!isSyncing && syncStatus === "error" && <XCircle className="h-4 w-4 text-red-500" title="Last sync failed" />}
+                        </div>
+                        <div className="flex items-center gap-1">
+                            {/* Clear chat button — only visible when there are messages */}
+                            {messages.length > 0 && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                        setMessages([]);
+                                        setShowSuggestions(true);
+                                    }}
+                                    title="Clear chat"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            )}
+                            <ThemeToggle />
+                            <ReportIssueButton />
+                        </div>
                     </div>
-                </div>
 
                 <div className="flex-1 overflow-hidden relative">
                     <ScrollArea className="h-full px-4">
@@ -347,6 +358,7 @@ function App() {
                     onClose={() => setPremiumAlert({ open: false })}
                 />
             </div>
+        </ThemeProvider>
         );
     }
 

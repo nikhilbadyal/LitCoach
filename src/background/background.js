@@ -225,7 +225,7 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                     }
                     
                     // Mark as processing
-                    chrome.storage.local.set({ [processingKey]: Date.now() });
+                    chrome.storage.local.set({ [processingKey]: Date.now(), is_syncing: true });
                     
                     const details = await fetchSubmissionDetails(submissionId);
                     if (!details) {
@@ -267,18 +267,45 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                             github_access_token: data.github_access_token,
                         });
                         console.log("Successfully submitted problem to user's selected github repo");
+                        
                         // Store the last sync result so the sidepanel badge and GitHub card can display it
                         chrome.storage.local.set({
                             last_sync_status: "success",
                             last_synced_file: `${details.question.titleSlug}/${details.lang.name}`
                         });
                         
+                        // Add to sync history
+                        chrome.storage.sync.get(["github_user_data"], async (syncData) => {
+                            const repoName = syncData.github_user_data?.repos?.find(
+                                r => r.id.toString() === data.selected_repo_id.toString()
+                            )?.name;
+                            await addToSyncHistory(
+                                details, 
+                                "success", 
+                                repoName,
+                                syncData.github_user_data?.github_name
+                            );
+                        });
+                        
+                        // Show success notification
+                        chrome.notifications.create({
+                            type: "basic",
+                            iconUrl: "/icon128.png",
+                            title: "Sync Complete",
+                            message: `Successfully synced ${details.question.title} to GitHub!`,
+                            priority: 0
+                        });
+                        
                         // Clean up processing flag after successful sync
                         chrome.storage.local.remove([processingKey]);
+                        chrome.storage.local.set({ is_syncing: false });
                     } catch (error) {
                         console.error("Error submitting problem to GitHub via API", error);
                         // Store sync failure so the sidepanel header badge turns red
                         chrome.storage.local.set({ last_sync_status: "error" });
+                        
+                        // Add to sync history as error
+                        await addToSyncHistory(details, "error");
 
                         // Handle rate limiting - queue for later
                         if (error.response?.status === 429) {
@@ -306,6 +333,7 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                             
                             // Clean up processing flag
                             chrome.storage.local.remove([processingKey]);
+                            chrome.storage.local.set({ is_syncing: false });
                             return;
                         }
 
@@ -334,6 +362,7 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                             }
                             
                             chrome.storage.local.remove([processingKey]);
+                            chrome.storage.local.set({ is_syncing: false });
                             return;
                         }
 
@@ -353,6 +382,7 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                         
                         // Clean up processing flag
                         chrome.storage.local.remove([processingKey]);
+                        chrome.storage.local.set({ is_syncing: false });
                     }
                 });
             }
@@ -447,20 +477,61 @@ chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
         });
         return true;
     }
+    
+    // Handle manual flush sync queue request
+    if (message.action === "flushSyncQueueNow") {
+        flushSyncQueue()
+            .then(() => sendResponse({ success: true }))
+            .catch((error) => sendResponse({ success: false, error: error.message }));
+        return true;
+    }
 });
 
-// Process offline sync queue
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name === "flushSyncQueue") {
-        console.log("Flushing offline sync queue...");
+// Helper function to add sync event to history
+// Keeps track of last 50 sync attempts for user reference
+async function addToSyncHistory(details, status, repoName = null, githubUsername = null) {
+    chrome.storage.local.get(["sync_history"], (result) => {
+        const history = result.sync_history || [];
+        
+        // Add new entry at the beginning
+        history.unshift({
+            problemTitle: details.question?.title,
+            problemSlug: details.question?.titleSlug,
+            language: details.lang?.name,
+            status: status, // "success", "error", "queued"
+            timestamp: Date.now(),
+            repoName: repoName,
+            githubUsername: githubUsername
+        });
+        
+        // Keep only last 50 entries to avoid storage bloat
+        const trimmedHistory = history.slice(0, 50);
+        
+        chrome.storage.local.set({ sync_history: trimmedHistory });
+    });
+}
+
+// Process offline sync queue - extracted as reusable function
+async function flushSyncQueue() {
+    console.log("Flushing offline sync queue...");
+    
+    return new Promise((resolve, reject) => {
         chrome.storage.local.get(["sync_queue"], async (localData) => {
             const queue = localData.sync_queue || [];
-            if (queue.length === 0) return;
+            if (queue.length === 0) {
+                resolve();
+                return;
+            }
 
-            chrome.storage.sync.get(["selected_repo_id", "github_access_token"], async (syncData) => {
-                if (!syncData.github_access_token || !syncData.selected_repo_id) return;
+            chrome.storage.sync.get(["selected_repo_id", "github_access_token", "github_user_data"], async (syncData) => {
+                if (!syncData.github_access_token || !syncData.selected_repo_id) {
+                    reject(new Error("GitHub not authenticated or no repo selected"));
+                    return;
+                }
 
                 const remainingQueue = [];
+                let successCount = 0;
+                
                 for (const item of queue) {
                     try {
                         await axios.post(`${API_URL}/user/github/submission`, {
@@ -469,8 +540,30 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                             github_access_token: syncData.github_access_token,
                         });
                         console.log("Successfully flushed submission from queue!");
+                        successCount++;
+                        
+                        // Add to sync history
+                        const repoName = syncData.github_user_data?.repos?.find(
+                            r => r.id.toString() === syncData.selected_repo_id.toString()
+                        )?.name;
+                        await addToSyncHistory(
+                            item.details, 
+                            "success", 
+                            repoName,
+                            syncData.github_user_data?.github_name
+                        );
+                        
+                        // Update last sync status
+                        chrome.storage.local.set({
+                            last_sync_status: "success",
+                            last_synced_file: `${item.details.question.titleSlug}/${item.details.lang.name}`
+                        });
                     } catch (error) {
                         console.error("Failed to flush submission from queue", error);
+                        
+                        // Add to sync history as error
+                        await addToSyncHistory(item.details, "error");
+                        
                         if (error.response?.status === 401 || error.response?.status === 403) {
                             console.error("GitHub access token invalid or lacks permissions during queue flush. Clearing...");
                             chrome.storage.sync.remove(["github_access_token"]);
@@ -480,7 +573,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                             break;
                         }
 
-                        if (!error.response || error.response.status >= 500) {
+                        if (!error.response || error.response.status >= 500 || error.response.status === 429) {
                             remainingQueue.push(item);
                         }
                     }
@@ -492,7 +585,27 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                     console.log(`${remainingQueue.length} items remaining in queue. Retrying in 5 mins.`);
                     chrome.alarms.create("flushSyncQueue", { delayInMinutes: 5 });
                 }
+                
+                if (successCount > 0) {
+                    // Show success notification
+                    chrome.notifications.create({
+                        type: "basic",
+                        iconUrl: "/icon128.png",
+                        title: "Sync Complete",
+                        message: `Successfully synced ${successCount} submission${successCount !== 1 ? 's' : ''} to GitHub!`,
+                        priority: 1
+                    });
+                }
+                
+                resolve();
             });
         });
+    });
+}
+
+// Process offline sync queue
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === "flushSyncQueue") {
+        await flushSyncQueue();
     }
 });

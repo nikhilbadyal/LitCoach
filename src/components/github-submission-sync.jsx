@@ -12,10 +12,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@comp
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@components/ui/form";
 import { Input } from "@components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@components/ui/avatar";
+import { Skeleton } from "@components/ui/skeleton";
 import { useToast } from "@hooks/use-toast";
-import { Loader2, Settings2, Plus, GitPullRequestArrow } from "lucide-react";
+import { Loader2, Settings2, Plus, GitPullRequestArrow, ExternalLink } from "lucide-react";
 import { Label } from "@components/ui/label";
 import DisconnectGitHubAccount from "@components/disconnect-github-account";
+import { getErrorMessage, getTroubleshootingLink } from "@/utils/error-messages";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
@@ -217,17 +219,26 @@ const GitHubSubmissionSync = () => {
     const handleCreateRepo = async (values) => {
         try {
             setCreatingRepo(true);
+            
+            // Optimistically add repo to UI before API call
+            const tempRepo = { id: `temp_${Date.now()}`, name: values.repoName };
+            setUserData((prev) => ({
+                ...prev,
+                repos: [...prev.repos, tempRepo],
+            }));
+            setSelectedRepo(tempRepo);
+            
             const response = await axios.post(`${API_URL}/user/github/repo`, {
                 repo_name: values.repoName,
                 github_access_token: userData.githubAccessToken,
                 is_private: values.isPrivate,
             });
 
+            // Replace temp repo with real repo data
             const newRepo = { id: response.data.repo_id, name: values.repoName };
-
             setUserData((prev) => ({
                 ...prev,
-                repos: [...prev.repos, newRepo],
+                repos: prev.repos.map(r => r.id === tempRepo.id ? newRepo : r),
             }));
             setSelectedRepo(newRepo);
             await setChromeStorage({ selected_repo_id: newRepo.id });
@@ -240,44 +251,88 @@ const GitHubSubmissionSync = () => {
         } catch (error) {
             console.error("Error creating repository", error);
             
-            // Handle rate limiting
-            if (error.response?.status === 429) {
-                toast({
-                    title: "GitHub Rate Limit Exceeded",
-                    description: "Too many requests to GitHub. Please try again later.",
-                    variant: "destructive",
-                });
-                return;
-            }
+            // Rollback optimistic update on error
+            setUserData((prev) => ({
+                ...prev,
+                repos: prev.repos.filter(r => !r.id.toString().startsWith('temp_')),
+            }));
+            setSelectedRepo({ id: null, name: "" });
+            
+            // Use centralized error message handler
+            const errorInfo = getErrorMessage(error, 'repo_create');
+            const troubleshootingLink = getTroubleshootingLink(error.response?.status);
             
             toast({
-                title: "Error",
-                description:
-                    error.response?.status === 400 ? "Repository name already exists" : "Cannot create repository",
-                variant: "destructive",
+                title: errorInfo.title,
+                description: (
+                    <div>
+                        <p>{errorInfo.description}</p>
+                        {troubleshootingLink && (
+                            <a 
+                                href={troubleshootingLink} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs underline mt-2 inline-block"
+                            >
+                                Learn more →
+                            </a>
+                        )}
+                    </div>
+                ),
+                variant: errorInfo.variant,
             });
         } finally {
             setCreatingRepo(false);
         }
     };
 
+    // Toggle sync on/off with optimistic UI update
     const handleToggleSync = async (checked) => {
-        await setChromeStorage({ sync_enabled: checked });
+        // Optimistically update UI immediately for better perceived performance
         setSyncEnabled(checked);
+        
+        try {
+            await setChromeStorage({ sync_enabled: checked });
 
-        // When re-enabling sync, only default to first repo if no repo was previously selected.
-        // This preserves the user's repo choice across toggle cycles.
-        if (checked && !selectedRepo.id && userData.repos.length > 0) {
-            const firstRepo = userData.repos[0];
-            await setChromeStorage({ selected_repo_id: firstRepo.id });
-            setSelectedRepo({ id: firstRepo.id, name: firstRepo.name });
+            // When re-enabling sync, only default to first repo if no repo was previously selected.
+            // This preserves the user's repo choice across toggle cycles.
+            if (checked && !selectedRepo.id && userData.repos.length > 0) {
+                const firstRepo = userData.repos[0];
+                await setChromeStorage({ selected_repo_id: firstRepo.id });
+                setSelectedRepo({ id: firstRepo.id, name: firstRepo.name });
+            }
+        } catch (error) {
+            // Rollback on error
+            console.error("Failed to toggle sync", error);
+            setSyncEnabled(!checked);
+            toast({
+                title: "Error",
+                description: "Failed to update sync settings. Please try again.",
+                variant: "destructive",
+            });
         }
     };
 
+    // Select repository with optimistic UI update
     const handleRepoSelect = async (repoId) => {
         const selected = userData.repos.find((repo) => repo.id.toString() === repoId.toString());
-        await setChromeStorage({ selected_repo_id: repoId });
+        
+        // Optimistically update UI
+        const previousRepo = selectedRepo;
         setSelectedRepo({ id: repoId, name: selected?.name || "" });
+        
+        try {
+            await setChromeStorage({ selected_repo_id: repoId });
+        } catch (error) {
+            // Rollback on error
+            console.error("Failed to select repo", error);
+            setSelectedRepo(previousRepo);
+            toast({
+                title: "Error",
+                description: "Failed to select repository. Please try again.",
+                variant: "destructive",
+            });
+        }
     };
 
     useEffect(() => {
@@ -286,8 +341,24 @@ const GitHubSubmissionSync = () => {
 
     if (isDataLoading) {
         return (
-            <Card className="animate-pulse">
-                <CardHeader>Loading GitHub Sync Info...</CardHeader>
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                        <div className="flex items-center space-x-3">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <div className="space-y-2">
+                                <Skeleton className="h-4 w-32" />
+                                <Skeleton className="h-3 w-24" />
+                            </div>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-3">
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-8 w-3/4" />
+                    </div>
+                </CardContent>
             </Card>
         );
     }
@@ -343,7 +414,7 @@ const GitHubSubmissionSync = () => {
                     </div>
                 </div>
                 <div className="flex items-center justify-between space-x-3 pt-1">
-                    <div>
+                    <div className="flex-1">
                         <p className="text-sm text-muted-foreground">
                             {syncEnabled
                                 ? selectedRepo.id
@@ -359,7 +430,23 @@ const GitHubSubmissionSync = () => {
                             </p>
                         )}
                     </div>
-                    <Switch checked={syncEnabled} onCheckedChange={handleToggleSync} />
+                    <div className="flex items-center gap-2">
+                        {/* View on GitHub button */}
+                        {syncEnabled && selectedRepo.id && userData.githubName && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8"
+                                onClick={() => {
+                                    window.open(`https://github.com/${userData.githubName}/${selectedRepo.name}`, "_blank");
+                                }}
+                                title="View repository on GitHub"
+                            >
+                                <ExternalLink className="h-4 w-4" />
+                            </Button>
+                        )}
+                        <Switch checked={syncEnabled} onCheckedChange={handleToggleSync} />
+                    </div>
                 </div>
             </CardHeader>
 
