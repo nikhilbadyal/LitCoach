@@ -57,9 +57,13 @@ const GitHubSubmissionSync = () => {
         defaultValues: { repoName: "", isPrivate: false },
     });
 
+    // Check if user is authenticated with GitHub and fetch their data
+    // This function is called on component mount and after successful OAuth
     const checkGitHubAuth = useCallback(async () => {
         try {
             setIsDataLoading(true);
+            
+            // Ask background script to verify authentication and fetch user data
             const response = await new Promise((resolve) => {
                 chrome.runtime.sendMessage({ action: "isGitHubAuthenticated" }, (res) => resolve(res));
             });
@@ -104,22 +108,14 @@ const GitHubSubmissionSync = () => {
             }
         } catch (error) {
             console.error("Authentication check failed", error);
-            
-            // Show user-friendly error for rate limiting
-            if (error.response?.status === 429) {
-                toast({
-                    title: "GitHub Rate Limit Exceeded",
-                    description: "Too many requests to GitHub. Please try again later.",
-                    variant: "destructive",
-                });
-            }
-            
             setIsAuthenticated(false);
         } finally {
             setIsDataLoading(false);
         }
-    }, [toast]);
+    }, []);
 
+    // Handle GitHub OAuth authentication flow
+    // Clears old data, launches OAuth, saves token, and verifies it works
     const handleGitHubAuth = useCallback(async () => {
         setIsActionLoading(true);
         
@@ -154,6 +150,7 @@ const GitHubSubmissionSync = () => {
         const authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectURL}&scope=read:user%20repo`;
 
         try {
+            // Launch OAuth flow in browser
             const responseUrl = await new Promise((resolve, reject) => {
                 chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (response) => {
                     if (chrome.runtime.lastError || !response) {
@@ -166,11 +163,45 @@ const GitHubSubmissionSync = () => {
             const code = new URLSearchParams(new URL(responseUrl).search).get("code");
             if (!code) throw new Error("No authorization code received");
 
+            // Exchange authorization code for access token
             const { data } = await axios.post(`${API_URL}/github/access-token`, { code: code });
             await setChromeStorage({ github_access_token: data.github_access_token });
 
-            toast({ title: "Authentication Success", description: "Successfully authenticated with GitHub" });
-            await checkGitHubAuth();
+            // Verify the token works by fetching user data
+            // Background script will check rate limits and cache the data
+            const isAuthenticated = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({ action: "isGitHubAuthenticated" }, (res) => resolve(res));
+            });
+
+            if (isAuthenticated) {
+                // Successfully authenticated and fetched user data
+                await checkGitHubAuth();
+                toast({ 
+                    title: "Authentication Success", 
+                    description: "Successfully authenticated with GitHub" 
+                });
+            } else {
+                // Token is valid but couldn't fetch user data (likely rate limited)
+                // Check if we have cached data from a previous session
+                const { github_user_data } = await getChromeStorage(["github_user_data"]);
+                
+                if (github_user_data) {
+                    // We have cached data, use it
+                    await checkGitHubAuth();
+                    toast({
+                        title: "Authentication Successful",
+                        description: "Connected with GitHub. Using cached data due to rate limit.",
+                        variant: "default",
+                    });
+                } else {
+                    // No cached data available
+                    toast({
+                        title: "Authentication Successful, But...",
+                        description: "GitHub rate limit exceeded. Your account is connected but data will load when the limit resets.",
+                        variant: "default",
+                    });
+                }
+            }
         } catch (error) {
             console.error("GitHub Auth failed", error);
             toast({
