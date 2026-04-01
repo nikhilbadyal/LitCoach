@@ -14,6 +14,7 @@ import { Input } from "@components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@components/ui/avatar";
 import { useToast } from "@hooks/use-toast";
 import { Loader2, Settings2, Plus, GitPullRequestArrow } from "lucide-react";
+import { Label } from "@components/ui/label";
 import DisconnectGitHubAccount from "@components/disconnect-github-account";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
@@ -31,6 +32,7 @@ const repoFormSchema = z.object({
         .regex(/^[a-zA-Z0-9._-]+$/, {
             message: "Repository name can only contain letters, numbers, periods, hyphens, and underscores",
         }),
+    isPrivate: z.boolean().default(false),
 });
 
 const GitHubSubmissionSync = () => {
@@ -52,7 +54,7 @@ const GitHubSubmissionSync = () => {
 
     const form = useForm({
         resolver: zodResolver(repoFormSchema),
-        defaultValues: { repoName: "" },
+        defaultValues: { repoName: "", isPrivate: false },
     });
 
     const checkGitHubAuth = useCallback(async () => {
@@ -159,6 +161,7 @@ const GitHubSubmissionSync = () => {
             const response = await axios.post(`${API_URL}/user/github/repo`, {
                 repo_name: values.repoName,
                 github_access_token: userData.githubAccessToken,
+                is_private: values.isPrivate,
             });
 
             const newRepo = { id: response.data.repo_id, name: values.repoName };
@@ -355,6 +358,27 @@ const GitHubSubmissionSync = () => {
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={form.control}
+                                        name="isPrivate"
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-center justify-between space-y-0 rounded-lg border p-3">
+                                                <div className="space-y-0.5">
+                                                    <Label className="text-sm font-medium">Private Repository</Label>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Make this repository private
+                                                    </p>
+                                                </div>
+                                                <FormControl>
+                                                    <Switch
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        disabled={creatingRepo}
+                                                    />
+                                                </FormControl>
                                             </FormItem>
                                         )}
                                     />

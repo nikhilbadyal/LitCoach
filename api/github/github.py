@@ -255,7 +255,7 @@ def push_to_github(
         )
 
 
-def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> int:
+def create_github_repo(repo_name: str, access_token: str, tags: List[str], is_private: bool = False) -> int:
     url = "https://api.github.com/user/repos"
     headers = {
         "Authorization": f"token {access_token}",
@@ -265,7 +265,7 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
         "name": repo_name,
         "description": "Collection of successful LeetCode submissions - automatically synced using LitCoach",
         "homepage": "https://chromewebstore.google.com/detail/litcoach/pbkbbpmpbidfjbcapgplbdogiljdechf",
-        "private": False,
+        "private": is_private,
         "auto_init": True,
     }
 

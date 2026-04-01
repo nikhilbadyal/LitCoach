@@ -29,6 +29,7 @@ def user_github_repo(request: CreateRepo):
             repo_name=request.repo_name,
             access_token=access_token,
             tags=["data-structures-and-algorithms", "leetcode-solutions", "litcoach"],
+            is_private=request.is_private,
         )
 
         return JSONResponse(
