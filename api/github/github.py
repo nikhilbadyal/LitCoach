@@ -247,8 +247,19 @@ def push_to_github(
     try:
         response = requests.put(url, json=data, headers=headers)
         _log_github_response("PUT", url, response)
+        
+        # Handle 409 Conflict - file was updated by another process (race condition)
+        if response.status_code == 409:
+            logger.warning(f"409 Conflict: File {file_path} was updated by another process. Skipping to avoid race condition.")
+            return  # Skip silently - the file is already updated
+        
         response.raise_for_status()
     except requests.RequestException as e:
+        # Don't raise error for 409 - it means the file is already updated
+        if getattr(e.response, "status_code", None) == 409:
+            logger.warning(f"409 Conflict handled for {file_path}: {str(e)}")
+            return
+            
         raise HTTPException(
             status_code=getattr(e.response, "status_code", 500),
             detail=f"Error pushing to GitHub: {str(e)}",

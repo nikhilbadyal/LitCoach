@@ -193,100 +193,147 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
 
             const submissionMatch = tab.url.match(/submissions\/(\d+)/);
             if (submissionMatch) {
-                const details = await fetchSubmissionDetails(submissionMatch[1]);
-                if (!details) {
-                    console.error("Failed to fetch submission details");
-                    return;
-                }
-
-                if (details.runtimeError || details.compileError) {
-                    console.log("Submission failed with runtime error or compile error");
-                    return;
-                }
-
-                if (details.statusDisplay !== "Accepted") {
-                    console.log(`Submission was ${details.statusDisplay}, not syncing.`);
-                    return;
-                }
-
-                const now = new Date();
-                const submissionDate = new Date(details.timestamp * 1000);
-                if (
-                    submissionDate.getUTCFullYear() !== now.getUTCFullYear() ||
-                    submissionDate.getUTCMonth() !== now.getUTCMonth() ||
-                    submissionDate.getUTCDate() !== now.getUTCDate() ||
-                    submissionDate.getUTCHours() !== now.getUTCHours() ||
-                    submissionDate.getUTCMinutes() !== now.getUTCMinutes()
-                ) {
-                    console.log("Submission was not made recently");
-                    return;
-                }
-
-                try {
-                    await axios.post(`${API_URL}/user/github/submission`, {
-                        ...details,
-                        github_repo_id: data.selected_repo_id,
-                        github_access_token: data.github_access_token,
-                    });
-                    console.log("Successfully submitted problem to user's selected github repo");
-                    // Store the last sync result so the sidepanel badge and GitHub card can display it
-                    chrome.storage.local.set({
-                        last_sync_status: "success",
-                        last_synced_file: `${details.question.titleSlug}/${details.lang.name}`
-                    });
-                } catch (error) {
-                    console.error("Error submitting problem to GitHub via API", error);
-                    // Store sync failure so the sidepanel header badge turns red
-                    chrome.storage.local.set({ last_sync_status: "error" });
-
-                    // Handle rate limiting - queue for later
-                    if (error.response?.status === 429) {
-                        console.log("GitHub API rate limit exceeded. Queueing submission for retry...");
-                        
-                        // Show notification to user
-                        chrome.notifications.create({
-                            type: "basic",
-                            iconUrl: "/icon128.png",
-                            title: "GitHub Rate Limit Exceeded",
-                            message: "Your submission has been queued and will sync automatically when the limit resets.",
-                            priority: 1
-                        });
-                        
-                        chrome.storage.local.get(["sync_queue"], (result) => {
-                            const queue = result.sync_queue || [];
-                            queue.push({
-                                details,
-                                timestamp: Date.now()
-                            });
-                            chrome.storage.local.set({ sync_queue: queue });
-                            // Retry in 10 minutes when rate limit might be reset
-                            chrome.alarms.create("flushSyncQueue", { delayInMinutes: 10 });
-                        });
+                const submissionId = submissionMatch[1];
+                
+                // Check if we're already processing this submission
+                const processingKey = `processing_${submissionId}`;
+                chrome.storage.local.get([processingKey], async (result) => {
+                    if (result[processingKey]) {
+                        console.log(`Submission ${submissionId} is already being processed. Skipping duplicate.`);
+                        return;
+                    }
+                    
+                    // Mark as processing
+                    chrome.storage.local.set({ [processingKey]: Date.now() });
+                    
+                    const details = await fetchSubmissionDetails(submissionId);
+                    if (!details) {
+                        console.error("Failed to fetch submission details");
+                        chrome.storage.local.remove([processingKey]);
                         return;
                     }
 
-                    if (error.response?.status === 401 || error.response?.status === 403) {
-                        console.error("GitHub access token is revoked or lacks permissions. Clearing...");
-                        chrome.storage.sync.remove(["github_access_token"]);
-                        chrome.action.setBadgeText({ text: "!" });
-                        chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
+                    if (details.runtimeError || details.compileError) {
+                        console.log("Submission failed with runtime error or compile error");
+                        chrome.storage.local.remove([processingKey]);
                         return;
                     }
 
-                    // Network error or 5xx server error - queue it up!
-                    if (!error.response || error.response.status >= 500) {
-                        console.log("Queueing submission for offline retry...");
-                        chrome.storage.local.get(["sync_queue"], (result) => {
-                            const queue = result.sync_queue || [];
-                            queue.push({
-                                details,
-                                timestamp: Date.now()
-                            });
-                            chrome.storage.local.set({ sync_queue: queue });
-                            chrome.alarms.create("flushSyncQueue", { delayInMinutes: 1 });
-                        });
+                    if (details.statusDisplay !== "Accepted") {
+                        console.log(`Submission was ${details.statusDisplay}, not syncing.`);
+                        chrome.storage.local.remove([processingKey]);
+                        return;
                     }
-                }
+
+                    const now = new Date();
+                    const submissionDate = new Date(details.timestamp * 1000);
+                    if (
+                        submissionDate.getUTCFullYear() !== now.getUTCFullYear() ||
+                        submissionDate.getUTCMonth() !== now.getUTCMonth() ||
+                        submissionDate.getUTCDate() !== now.getUTCDate() ||
+                        submissionDate.getUTCHours() !== now.getUTCHours() ||
+                        submissionDate.getUTCMinutes() !== now.getUTCMinutes()
+                    ) {
+                        console.log("Submission was not made recently");
+                        chrome.storage.local.remove([processingKey]);
+                        return;
+                    }
+
+                    try {
+                        await axios.post(`${API_URL}/user/github/submission`, {
+                            ...details,
+                            github_repo_id: data.selected_repo_id,
+                            github_access_token: data.github_access_token,
+                        });
+                        console.log("Successfully submitted problem to user's selected github repo");
+                        // Store the last sync result so the sidepanel badge and GitHub card can display it
+                        chrome.storage.local.set({
+                            last_sync_status: "success",
+                            last_synced_file: `${details.question.titleSlug}/${details.lang.name}`
+                        });
+                        
+                        // Clean up processing flag after successful sync
+                        chrome.storage.local.remove([processingKey]);
+                    } catch (error) {
+                        console.error("Error submitting problem to GitHub via API", error);
+                        // Store sync failure so the sidepanel header badge turns red
+                        chrome.storage.local.set({ last_sync_status: "error" });
+
+                        // Handle rate limiting - queue for later
+                        if (error.response?.status === 429) {
+                            console.log("GitHub API rate limit exceeded. Queueing submission for retry...");
+                            
+                            // Show notification to user
+                            chrome.notifications.create({
+                                type: "basic",
+                                iconUrl: "/icon128.png",
+                                title: "GitHub Rate Limit Exceeded",
+                                message: "Your submission has been queued and will sync automatically when the limit resets.",
+                                priority: 1
+                            });
+                            
+                            chrome.storage.local.get(["sync_queue"], (result) => {
+                                const queue = result.sync_queue || [];
+                                queue.push({
+                                    details,
+                                    timestamp: Date.now()
+                                });
+                                chrome.storage.local.set({ sync_queue: queue });
+                                // Retry in 10 minutes when rate limit might be reset
+                                chrome.alarms.create("flushSyncQueue", { delayInMinutes: 10 });
+                            });
+                            
+                            // Clean up processing flag
+                            chrome.storage.local.remove([processingKey]);
+                            return;
+                        }
+
+                        if (error.response?.status === 401 || error.response?.status === 403) {
+                            console.error("GitHub access token is revoked or lacks permissions. Clearing...");
+                            
+                            // Check if it's actually an auth error or just rate limit
+                            const errorDetail = error.response?.data?.detail || "";
+                            if (errorDetail.includes("rate limit")) {
+                                console.log("403 was due to rate limit, not auth failure. Keeping token and queueing.");
+                                // Queue it instead of clearing token
+                                chrome.storage.local.get(["sync_queue"], (result) => {
+                                    const queue = result.sync_queue || [];
+                                    queue.push({
+                                        details,
+                                        timestamp: Date.now()
+                                    });
+                                    chrome.storage.local.set({ sync_queue: queue });
+                                    chrome.alarms.create("flushSyncQueue", { delayInMinutes: 10 });
+                                });
+                            } else {
+                                // Real auth failure - clear token
+                                chrome.storage.sync.remove(["github_access_token"]);
+                                chrome.action.setBadgeText({ text: "!" });
+                                chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
+                            }
+                            
+                            chrome.storage.local.remove([processingKey]);
+                            return;
+                        }
+
+                        // Network error or 5xx server error - queue it up!
+                        if (!error.response || error.response.status >= 500) {
+                            console.log("Queueing submission for offline retry...");
+                            chrome.storage.local.get(["sync_queue"], (result) => {
+                                const queue = result.sync_queue || [];
+                                queue.push({
+                                    details,
+                                    timestamp: Date.now()
+                                });
+                                chrome.storage.local.set({ sync_queue: queue });
+                                chrome.alarms.create("flushSyncQueue", { delayInMinutes: 1 });
+                            });
+                        }
+                        
+                        // Clean up processing flag
+                        chrome.storage.local.remove([processingKey]);
+                    }
+                });
             }
         });
     }
@@ -337,11 +384,34 @@ chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
                     }
                 }
                 
-                if (error.response?.status === 401 || error.response?.status === 403) {
+                // Only clear token on 401 (unauthorized), not 403 (which could be rate limit)
+                if (error.response?.status === 401) {
+                    console.error("GitHub token is invalid or expired. Clearing...");
                     chrome.storage.sync.remove(["github_access_token", "github_user_data", "github_data_cache_time"]);
                     chrome.action.setBadgeText({ text: "!" });
                     chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
                 }
+                
+                // For 403, check if it's rate limit or auth issue
+                if (error.response?.status === 403) {
+                    const errorDetail = error.response?.data?.detail || "";
+                    // Only clear token if it's explicitly an auth error, not rate limit
+                    if (errorDetail.includes("authentication") || errorDetail.includes("token")) {
+                        console.error("GitHub authentication failed. Clearing token...");
+                        chrome.storage.sync.remove(["github_access_token", "github_user_data", "github_data_cache_time"]);
+                        chrome.action.setBadgeText({ text: "!" });
+                        chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
+                    } else {
+                        console.error("GitHub API returned 403 (likely rate limit). Keeping token.");
+                        // Use cached data if available
+                        if (stored.github_user_data) {
+                            console.log("Using stale cached data due to 403 error");
+                            sendResponse(true);
+                            return;
+                        }
+                    }
+                }
+                
                 sendResponse(false);
             }
         });
