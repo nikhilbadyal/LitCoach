@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime
 from typing import List
 from urllib.parse import quote
 
@@ -74,9 +75,10 @@ def get_user_info_from_github(access_token: str) -> dict:
             rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
             if rate_limit_remaining == "0":
                 rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
+                reset_time = datetime.fromtimestamp(int(rate_limit_reset)).strftime("%Y-%m-%d %H:%M:%S") if rate_limit_reset != "unknown" else "unknown"
                 raise HTTPException(
                     status_code=429,
-                    detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+                    detail=f"GitHub API rate limit exceeded. Resets at {reset_time}",
                 )
         
         if response.status_code == 401:
@@ -114,9 +116,10 @@ def get_user_github_repos(access_token: str) -> List[dict]:
                 rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
                 if rate_limit_remaining == "0":
                     rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
+                    reset_time = datetime.fromtimestamp(int(rate_limit_reset)).strftime("%Y-%m-%d %H:%M:%S") if rate_limit_reset != "unknown" else "unknown"
                     raise HTTPException(
                         status_code=429,
-                        detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+                        detail=f"GitHub API rate limit exceeded. Resets at {reset_time}",
                     )
             
             if response.status_code == 401:
@@ -175,9 +178,10 @@ def get_github_repository_by_id(repo_id: int, access_token: str) -> dict | None:
             rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
             if rate_limit_remaining == "0":
                 rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
+                reset_time = datetime.fromtimestamp(int(rate_limit_reset)).strftime("%Y-%m-%d %H:%M:%S") if rate_limit_reset != "unknown" else "unknown"
                 raise HTTPException(
                     status_code=429,
-                    detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+                    detail=f"GitHub API rate limit exceeded. Resets at {reset_time}",
                 )
 
         if response.status_code == 401:
@@ -285,9 +289,10 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
         rate_limit_remaining = check_resp.headers.get("X-RateLimit-Remaining", "unknown")
         if rate_limit_remaining == "0":
             rate_limit_reset = check_resp.headers.get("X-RateLimit-Reset", "unknown")
+            reset_time = datetime.fromtimestamp(int(rate_limit_reset)).strftime("%Y-%m-%d %H:%M:%S") if rate_limit_reset != "unknown" else "unknown"
             raise HTTPException(
                 status_code=429,
-                detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+                detail=f"GitHub API rate limit exceeded. Resets at {reset_time}",
             )
 
     if check_resp.status_code == 401:
