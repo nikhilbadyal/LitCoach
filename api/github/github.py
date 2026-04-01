@@ -1,7 +1,9 @@
-import requests
-from fastapi.exceptions import HTTPException
 import base64
 from typing import List
+from urllib.parse import quote
+
+import requests
+from fastapi.exceptions import HTTPException
 
 from api.config import logger, settings
 
@@ -151,17 +153,63 @@ def get_user_github_repos(access_token: str) -> List[dict]:
         )
 
 
-def resolve_github_repo_id_to_repo_name(repo_id: int, access_token: str) -> dict:
-    repos = get_user_github_repos(access_token=access_token)
+def _github_repos_owner_repo_url(owner_login: str, repo_name: str) -> str:
+    o = quote(str(owner_login), safe="-")
+    r = quote(str(repo_name), safe="-_.")
+    return f"https://api.github.com/repos/{o}/{r}"
 
-    for repo in repos:
-        if repo.get("id") == repo_id:
-            return {
-                "name": repo.get("name"),
-                "owner": repo.get("owner").get("login"),
-            }
 
-    return None
+def get_github_repository_by_id(repo_id: int, access_token: str) -> dict | None:
+    """Single REST call by numeric id — avoids listing every repo (major rate-limit win)."""
+    url = f"https://api.github.com/repositories/{repo_id}"
+    headers = {"Authorization": f"token {access_token}"}
+
+    try:
+        response = requests.get(url, headers=headers)
+        _log_github_response("GET", url, response)
+
+        if response.status_code == 404:
+            return None
+
+        if response.status_code in [403, 429]:
+            rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
+            if rate_limit_remaining == "0":
+                rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+                )
+
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=401,
+                detail="GitHub authentication failed. Your access token may have expired or been revoked. Please re-authenticate with GitHub.",
+            )
+
+        if response.status_code == 403:
+            return None
+
+        response.raise_for_status()
+        return response.json()
+    except HTTPException:
+        raise
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=getattr(e.response, "status_code", 500),
+            detail=f"Error fetching GitHub repository: {str(e)}",
+        )
+
+
+def resolve_github_repo_id_to_repo_name(repo_id: int, access_token: str) -> dict | None:
+    repo = get_github_repository_by_id(repo_id, access_token=access_token)
+    if not repo:
+        return None
+    owner = repo.get("owner") or {}
+    login = owner.get("login")
+    name = repo.get("name")
+    if not login or not name:
+        return None
+    return {"name": name, "owner": login}
 
 
 def push_to_github(
@@ -217,14 +265,39 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
         "auto_init": True,
     }
 
-    repo_names = [
-        repo.get("name") for repo in get_user_github_repos(access_token=access_token)
-    ]
-    if repo_name in repo_names:
+    user = get_user_info_from_github(access_token=access_token)
+    login = user.get("login")
+    if not login:
+        raise HTTPException(status_code=500, detail="Could not resolve GitHub username")
+
+    check_url = _github_repos_owner_repo_url(login, repo_name)
+    check_headers = {"Authorization": f"token {access_token}"}
+    check_resp = requests.get(check_url, headers=check_headers)
+    _log_github_response("GET", check_url, check_resp)
+
+    if check_resp.status_code == 200:
         raise HTTPException(
             status_code=400,
             detail="Repository with the same name already exists",
         )
+
+    if check_resp.status_code in [403, 429]:
+        rate_limit_remaining = check_resp.headers.get("X-RateLimit-Remaining", "unknown")
+        if rate_limit_remaining == "0":
+            rate_limit_reset = check_resp.headers.get("X-RateLimit-Reset", "unknown")
+            raise HTTPException(
+                status_code=429,
+                detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
+            )
+
+    if check_resp.status_code == 401:
+        raise HTTPException(
+            status_code=401,
+            detail="GitHub authentication failed. Your access token may have expired or been revoked. Please re-authenticate with GitHub.",
+        )
+
+    if check_resp.status_code not in (200, 404, 401) and check_resp.status_code not in (403, 429):
+        check_resp.raise_for_status()
 
     try:
         response = requests.post(url, headers=headers, json=data)
