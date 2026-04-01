@@ -17,33 +17,22 @@ def resolve_github_access_token(code: str) -> str:
         "code": code,
     }
 
-    from api.config import logger
-    logger.info(f"Attempting OAuth token exchange with Client ID: {settings.GITHUB_CLIENT_ID[:10]}...")
-
     try:
         response = requests.post(url, headers=headers, json=data)
-        logger.info(f"GitHub response status: {response.status_code}")
-        logger.info(f"GitHub response body: {response.text[:200]}")
-        
         response.raise_for_status()
-        response_data = response.json()
-        access_token = response_data.get("access_token")
+        access_token = response.json().get("access_token")
 
         if not access_token:
-            error_description = response_data.get(
+            error_description = response.json().get(
                 "error_description", "Unknown error"
             )
-            error_type = response_data.get("error", "unknown")
-            logger.error(f"OAuth error: {error_type} - {error_description}")
             raise HTTPException(
                 status_code=400,
                 detail=f"Error getting access token: {error_description}",
             )
 
-        logger.info("Successfully obtained access token")
         return access_token
     except requests.RequestException as e:
-        logger.error(f"Request exception: {str(e)}")
         raise HTTPException(
             status_code=getattr(e.response, "status_code", 500),
             detail=f"Request to GitHub failed: {str(e)}",
