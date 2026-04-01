@@ -121,7 +121,9 @@ const GitHubSubmissionSync = () => {
     const handleGitHubAuth = useCallback(async () => {
         setIsActionLoading(true);
         const redirectURL = chrome.identity.getRedirectURL();
+        console.log("OAuth Redirect URL:", redirectURL);
         const authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectURL}&scope=read:user%20repo`;
+        console.log("OAuth Auth URL:", authUrl);
 
         try {
             const responseUrl = await new Promise((resolve, reject) => {
