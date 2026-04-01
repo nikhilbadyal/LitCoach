@@ -7,7 +7,10 @@ from api.config import settings
 
 def resolve_github_access_token(code: str) -> str:
     url = "https://github.com/login/oauth/access_token"
-    headers = {"Accept": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
     data = {
         "client_id": settings.GITHUB_CLIENT_ID,
         "client_secret": settings.GITHUB_CLIENT_SECRET,
@@ -15,7 +18,7 @@ def resolve_github_access_token(code: str) -> str:
     }
 
     try:
-        response = requests.post(url, headers=headers, data=data)
+        response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         access_token = response.json().get("access_token")
 
