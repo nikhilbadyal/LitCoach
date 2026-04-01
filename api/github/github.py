@@ -310,16 +310,24 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
         response.raise_for_status()
         repo_info = response.json()
         repo_id = repo_info.get("id")
+        
         if tags:
+            import time
+            time.sleep(1)
+            
             tags_url = f"https://api.github.com/repos/{response.json().get('owner').get('login')}/{repo_name}/topics"
             tags_headers = {
                 "Authorization": f"token {access_token}",
                 "Accept": "application/vnd.github.mercy-preview+json",
             }
             tags_data = {"names": tags}
-            tags_response = requests.put(tags_url, headers=tags_headers, json=tags_data)
-            _log_github_response("PUT", tags_url, tags_response)
-            tags_response.raise_for_status()
+            
+            try:
+                tags_response = requests.put(tags_url, headers=tags_headers, json=tags_data)
+                _log_github_response("PUT", tags_url, tags_response)
+                tags_response.raise_for_status()
+            except requests.RequestException:
+                pass
 
         return repo_id
     except requests.RequestException as e:
