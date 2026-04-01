@@ -8,9 +8,6 @@ router = APIRouter()
 
 @router.get("/user/github/info")
 def user_github_info(github_access_token: str):
-    # Log every call to this endpoint to track frequency
-    logger.info("=== /user/github/info endpoint called ===")
-    
     try:
         user_github_details = get_user_info_from_github(github_access_token)
         user_github_repositories = get_user_github_repos(github_access_token)

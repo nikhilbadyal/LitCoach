@@ -45,13 +45,7 @@ LANGUAGE_EXTENSIONS = {
 
 @router.post("/user/github/submission")
 def user_github_submission(request: LeetCodeSubmission):
-    # Log every call to this endpoint
-    logger.info("=== /user/github/submission endpoint called ===")
-    logger.info(f"Submission for problem: {request.question.titleSlug}")
-    
     try:
-        # Always require fresh access token from the request
-        # Database tokens may be expired or revoked
         access_token = request.github_access_token
         if not access_token:
             raise HTTPException(

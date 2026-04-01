@@ -40,29 +40,28 @@ def get_user_info_from_github(access_token: str) -> dict:
     url = "https://api.github.com/user"
     headers = {"Authorization": f"token {access_token}"}
 
-    # Log the API call
-    from api.config import logger
-    logger.info(f"Making GitHub API call to: {url}")
-
     try:
         response = requests.get(url, headers=headers)
         
-        # Log rate limit info from response headers
-        rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
-        rate_limit_limit = response.headers.get("X-RateLimit-Limit", "unknown")
-        rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
-        logger.info(f"GitHub API Rate Limit: {rate_limit_remaining}/{rate_limit_limit} remaining (resets at {rate_limit_reset})")
-        
-        # Check for rate limit error and provide helpful message
-        if response.status_code == 403:
+        if response.status_code in [403, 429]:
+            rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
             if rate_limit_remaining == "0":
+                rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
                 raise HTTPException(
                     status_code=429,
                     detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
                 )
         
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=401,
+                detail="GitHub authentication failed. Your access token may have expired or been revoked. Please re-authenticate with GitHub.",
+            )
+        
         response.raise_for_status()
         return response.json()
+    except HTTPException:
+        raise
     except requests.RequestException as e:
         raise HTTPException(
             status_code=getattr(e.response, "status_code", 500),
@@ -75,32 +74,28 @@ def get_user_github_repos(access_token: str) -> List[dict]:
     headers = {"Authorization": f"token {access_token}"}
     params = {"affiliation": "owner", "per_page": 100}
 
-    # Log the API call
-    from api.config import logger
-    logger.info(f"Making GitHub API call to: {url}")
-
     try:
         repos = []
         page = 1
         while True:
-            logger.info(f"Fetching repos page {page}")
             response = requests.get(
                 url, headers=headers, params={**params, "page": page}
             )
             
-            # Log rate limit info from response headers
-            rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
-            rate_limit_limit = response.headers.get("X-RateLimit-Limit", "unknown")
-            rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
-            logger.info(f"GitHub API Rate Limit: {rate_limit_remaining}/{rate_limit_limit} remaining (resets at {rate_limit_reset})")
-            
-            # Check for rate limit error and provide helpful message
-            if response.status_code == 403:
+            if response.status_code in [403, 429]:
+                rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
                 if rate_limit_remaining == "0":
+                    rate_limit_reset = response.headers.get("X-RateLimit-Reset", "unknown")
                     raise HTTPException(
                         status_code=429,
                         detail=f"GitHub API rate limit exceeded. Resets at timestamp: {rate_limit_reset}",
                     )
+            
+            if response.status_code == 401:
+                raise HTTPException(
+                    status_code=401,
+                    detail="GitHub authentication failed. Your access token may have expired or been revoked. Please re-authenticate with GitHub.",
+                )
             
             response.raise_for_status()
             page_repos = response.json()
@@ -111,15 +106,13 @@ def get_user_github_repos(access_token: str) -> List[dict]:
             repos.extend(page_repos)
             page += 1
             
-            # Safety check to prevent infinite loops
             if page > 100:
-                logger.warning(f"Stopped fetching repos after 100 pages (10,000 repos)")
                 break
 
-        logger.info(f"Total repos fetched: {len(repos)}")
         return repos
+    except HTTPException:
+        raise
     except requests.RequestException as e:
-        # Provide more specific error message for authentication failures
         status_code = getattr(e.response, "status_code", 500)
         if status_code == 401:
             raise HTTPException(
@@ -133,10 +126,6 @@ def get_user_github_repos(access_token: str) -> List[dict]:
 
 
 def resolve_github_repo_id_to_repo_name(repo_id: int, access_token: str) -> dict:
-    # Log the API call
-    from api.config import logger
-    logger.info(f"Resolving repo ID {repo_id} to repo name (calls get_user_github_repos)")
-    
     repos = get_user_github_repos(access_token=access_token)
 
     for repo in repos:
@@ -165,17 +154,7 @@ def push_to_github(
         "branch": "main",
     }
 
-    # Log the API call
-    from api.config import logger
-    logger.info(f"Making GitHub API call to: {url} (GET to check if file exists)")
-
     response = requests.get(url, headers=headers)
-    
-    # Log rate limit after GET
-    rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
-    rate_limit_limit = response.headers.get("X-RateLimit-Limit", "unknown")
-    logger.info(f"GitHub API Rate Limit after GET: {rate_limit_remaining}/{rate_limit_limit} remaining")
-    
     sha = response.json().get("sha", None)
 
     if sha:
@@ -183,19 +162,11 @@ def push_to_github(
             "utf-8"
         )
         if existing_content == content:
-            logger.info("Content unchanged, skipping push")
             return
         data["sha"] = sha
 
     try:
-        logger.info(f"Making GitHub API call to: {url} (PUT to push content)")
         response = requests.put(url, json=data, headers=headers)
-        
-        # Log rate limit after PUT
-        rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
-        rate_limit_limit = response.headers.get("X-RateLimit-Limit", "unknown")
-        logger.info(f"GitHub API Rate Limit after PUT: {rate_limit_remaining}/{rate_limit_limit} remaining")
-        
         response.raise_for_status()
     except requests.RequestException as e:
         raise HTTPException(
@@ -218,10 +189,6 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
         "auto_init": True,
     }
 
-    # Log the API call
-    from api.config import logger
-    logger.info(f"Checking if repo '{repo_name}' already exists (calls get_user_github_repos)")
-    
     repo_names = [
         repo.get("name") for repo in get_user_github_repos(access_token=access_token)
     ]
@@ -232,14 +199,7 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
         )
 
     try:
-        logger.info(f"Making GitHub API call to: {url} (POST to create repo)")
         response = requests.post(url, headers=headers, json=data)
-        
-        # Log rate limit after POST
-        rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
-        rate_limit_limit = response.headers.get("X-RateLimit-Limit", "unknown")
-        logger.info(f"GitHub API Rate Limit after POST: {rate_limit_remaining}/{rate_limit_limit} remaining")
-        
         response.raise_for_status()
         repo_info = response.json()
         repo_id = repo_info.get("id")
@@ -250,15 +210,7 @@ def create_github_repo(repo_name: str, access_token: str, tags: List[str]) -> in
                 "Accept": "application/vnd.github.mercy-preview+json",
             }
             tags_data = {"names": tags}
-            
-            logger.info(f"Making GitHub API call to: {tags_url} (PUT to add topics)")
             tags_response = requests.put(tags_url, headers=tags_headers, json=tags_data)
-            
-            # Log rate limit after topics PUT
-            rate_limit_remaining = tags_response.headers.get("X-RateLimit-Remaining", "unknown")
-            rate_limit_limit = tags_response.headers.get("X-RateLimit-Limit", "unknown")
-            logger.info(f"GitHub API Rate Limit after topics PUT: {rate_limit_remaining}/{rate_limit_limit} remaining")
-            
             tags_response.raise_for_status()
 
         return repo_id
