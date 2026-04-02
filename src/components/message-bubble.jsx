@@ -1,13 +1,37 @@
 // Extracted MessageBubble component — renders a single chat message (user or assistant).
 // Lives outside App to avoid re-creating the component definition on every render.
 
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/default-highlight";
 // Import dark and light syntax-highlighter themes so code blocks respect the active mode
 import { atomOneDark } from "react-syntax-highlighter/dist/esm/styles/hljs";
 import { atomOneLight } from "react-syntax-highlighter/dist/esm/styles/hljs";
 import { useTheme } from "@/components/theme-provider";
+
+/**
+ * CopyButton — a hover-to-show button for copying code blocks to the clipboard.
+ */
+const CopyButton = ({ content }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(content);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <button
+            onClick={handleCopy}
+            className="absolute top-2 right-2 p-1.5 z-10 rounded-md bg-secondary/80 border border-border/50 text-muted-foreground backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-secondary hover:text-foreground"
+            title="Copy code"
+        >
+            {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+    );
+};
 
 /**
  * TypingIndicator — three pulsing dots that mimic a "someone is typing" animation.
@@ -66,13 +90,15 @@ const MessageBubble = ({ message, index, totalMessages, isStreaming }) => {
                             code({ className, ...props }) {
                                 const match = /language-(\w+)/.exec(className || "");
                                 return match ? (
-                                    <div className="relative overflow-x-auto">
+                                    <div className="relative group my-4 rounded-md overflow-hidden border border-border/50">
+                                        <CopyButton content={String(props.children).replace(/\n$/, "")} />
                                         {/* Apply the resolved code theme so blocks match light/dark mode */}
                                         <SyntaxHighlighter
                                             language={match[1]}
                                             style={codeStyle}
                                             wrapLongLines={true}
                                             showInlineLineNumbers={true}
+                                            customStyle={{ margin: 0, padding: "1rem" }}
                                             {...props}
                                         />
                                     </div>
