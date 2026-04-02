@@ -42,8 +42,8 @@ const GitHubRateLimitStatus = () => {
 
     // Determine alert variant based on remaining requests
     const getAlertVariant = () => {
-        if (rateLimitInfo.remaining === 0) return "destructive";
-        if (percentRemaining < 10) return "destructive";
+        if (rateLimitInfo.remaining === 0 || percentRemaining < 10) return "destructive";
+        if (percentRemaining < 20) return "warning";
         return "default";
     };
 
@@ -67,7 +67,10 @@ const GitHubRateLimitStatus = () => {
     };
 
     return (
-        <Alert variant={getAlertVariant()} className="mb-4">
+        <Alert 
+            variant={getAlertVariant() === "warning" ? "default" : getAlertVariant()} 
+            className={`mb-4 ${getAlertVariant() === "warning" ? "border-amber-500/50 text-amber-600 dark:text-amber-500 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-500 bg-amber-50 dark:bg-amber-950/20" : ""}`}
+        >
             {getIcon()}
             <AlertTitle>{getTitle()}</AlertTitle>
             <AlertDescription className="text-sm">

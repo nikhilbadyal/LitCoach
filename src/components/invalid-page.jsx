@@ -95,7 +95,7 @@ const InvalidPage = () => {
                     <Button
                         onClick={goToRandomProblem}
                         className="w-2/3 flex-grow"
-                        variant="outline"
+                        variant="default"
                         disabled={isLoading}
                     >
                         {isLoading ? (

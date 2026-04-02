@@ -29,8 +29,9 @@ const App = () => {
                     
                     {/* <SubscriptionCard /> */}
                     <SubscriptionManagementCard />
-                    <div className="mx-auto">
+                    <div className="flex justify-center items-center gap-2 mt-4 text-muted-foreground">
                         <ReportIssueButton />
+                        <span className="text-xs opacity-50">•</span>
                         <PrivacyPolicyButton />
                     </div>
                 </div>
