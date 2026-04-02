@@ -94,6 +94,7 @@ def user_github_submission(request: LeetCodeSubmission):
         return JSONResponse(
             content={
                 "message": "Problem and solution successfully added to GitHub!",
+                "github_url": f"https://github.com/{repo['owner']}/{repo['name']}/blob/main/{solution_path}",
             },
             status_code=201,
         )

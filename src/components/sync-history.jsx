@@ -104,8 +104,10 @@ const SyncHistory = () => {
                                                 size="sm"
                                                 className="h-6 w-6 p-0 flex-shrink-0"
                                                 onClick={() => {
-                                                    const url = `https://github.com/${item.githubUsername}/${item.repoName}/blob/main/${item.problemSlug}/${item.language}`;
-                                                    window.open(url, "_blank");
+                                                    // New submissions will have the exact github_url from the backend.
+                                                    // Older submissions fallback to the repository root.
+                                                    const url = item.githubUrl || `https://github.com/${item.githubUsername}/${item.repoName}`;
+                                                    window.open(url, "_blank", "noopener,noreferrer");
                                                 }}
                                                 title="View on GitHub"
                                             >

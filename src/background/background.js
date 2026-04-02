@@ -261,12 +261,12 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                     }
 
                     try {
-                        await axios.post(`${API_URL}/user/github/submission`, {
+                        const res = await axios.post(`${API_URL}/user/github/submission`, {
                             ...details,
                             github_repo_id: data.selected_repo_id,
                             github_access_token: data.github_access_token,
                         });
-                        console.log("Successfully submitted problem to user's selected github repo");
+                        console.log("Successfully submitted problem to user's selected github repo", res.data.github_url);
                         
                         // Store the last sync result so the sidepanel badge and GitHub card can display it
                         chrome.storage.local.set({
@@ -283,7 +283,8 @@ chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
                                 details, 
                                 "success", 
                                 repoName,
-                                syncData.github_user_data?.github_name
+                                syncData.github_user_data?.github_name,
+                                res.data.github_url
                             );
                         });
                         
@@ -489,7 +490,7 @@ chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
 
 // Helper function to add sync event to history
 // Keeps track of last 50 sync attempts for user reference
-async function addToSyncHistory(details, status, repoName = null, githubUsername = null) {
+async function addToSyncHistory(details, status, repoName = null, githubUsername = null, githubUrl = null) {
     chrome.storage.local.get(["sync_history"], (result) => {
         const history = result.sync_history || [];
         
@@ -501,7 +502,8 @@ async function addToSyncHistory(details, status, repoName = null, githubUsername
             status: status, // "success", "error", "queued"
             timestamp: Date.now(),
             repoName: repoName,
-            githubUsername: githubUsername
+            githubUsername: githubUsername,
+            githubUrl: githubUrl
         });
         
         // Keep only last 50 entries to avoid storage bloat
@@ -534,12 +536,12 @@ async function flushSyncQueue() {
                 
                 for (const item of queue) {
                     try {
-                        await axios.post(`${API_URL}/user/github/submission`, {
+                        const res = await axios.post(`${API_URL}/user/github/submission`, {
                             ...item.details,
                             github_repo_id: syncData.selected_repo_id,
                             github_access_token: syncData.github_access_token,
                         });
-                        console.log("Successfully flushed submission from queue!");
+                        console.log("Successfully flushed submission from queue!", res.data.github_url);
                         successCount++;
                         
                         // Add to sync history
@@ -550,7 +552,8 @@ async function flushSyncQueue() {
                             item.details, 
                             "success", 
                             repoName,
-                            syncData.github_user_data?.github_name
+                            syncData.github_user_data?.github_name,
+                            res.data.github_url
                         );
                         
                         // Update last sync status
