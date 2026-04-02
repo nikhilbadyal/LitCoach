@@ -40,8 +40,19 @@ export function ThemeProvider({ children, defaultTheme = "system", storageKey = 
     root.classList.add(theme)
   }, [theme])
 
+  // Compute the actually-applied theme so consumers (e.g. SyntaxHighlighter)
+  // can branch on "light" vs "dark" without re-checking the OS preference.
+  const resolvedTheme =
+    theme === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : theme
+
   const value = {
     theme,
+    // The concrete theme that is currently applied to the document root
+    resolvedTheme,
     setTheme: (newTheme) => {
       // Save to chrome storage
       chrome.storage.sync.set({ [storageKey]: newTheme })

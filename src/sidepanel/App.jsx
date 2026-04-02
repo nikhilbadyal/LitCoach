@@ -9,7 +9,10 @@ import { Info, Send, StopCircle, Loader2, Trash2, CheckCircle2, XCircle } from "
 import ReportIssueButton from "@components/report-issue";
 import ReactMarkdown from "react-markdown";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/default-highlight";
-import { ThemeProvider } from "@/components/theme-provider";
+// Import a dark and a light syntax-highlighter theme so code blocks respect the active mode
+import { atomOneDark } from "react-syntax-highlighter/dist/esm/styles/hljs";
+import { atomOneLight } from "react-syntax-highlighter/dist/esm/styles/hljs";
+import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // Dynamically construct the options page URL so it works across reinstalls and ID changes
@@ -203,6 +206,10 @@ function App() {
 
     const MessageBubble = ({ message, index }) => {
         const isLastMessage = index === messages.length - 1;
+        // Resolve the active theme ("light" | "dark") to select the matching syntax-highlighter style
+        const { resolvedTheme } = useTheme();
+        // Pick the dark or light syntax-highlighting colour-scheme based on the current theme
+        const codeStyle = resolvedTheme === "dark" ? atomOneDark : atomOneLight;
         return (
             <div className={`flex ${message.role === "user" && "justify-end"} mb-4`}>
                 <div
@@ -215,7 +222,8 @@ function App() {
                         <Loader2 className="animate-spin w-4" />
                     ) : message.role === "assistant" ? (
                         <ReactMarkdown
-                            className="prose prose-sm max-w-none"
+                            /* dark:prose-invert flips all typography-plugin colours for dark mode */
+                            className="prose prose-sm dark:prose-invert max-w-none"
                             components={{
                                 pre({ ...props }) {
                                     return props.children;
@@ -224,8 +232,10 @@ function App() {
                                     const match = /language-(\w+)/.exec(className || "");
                                     return match ? (
                                         <div className="relative overflow-x-auto">
+                                            {/* Apply the resolved code theme so blocks match light/dark mode */}
                                             <SyntaxHighlighter
                                                 language={match[1]}
+                                                style={codeStyle}
                                                 wrapLongLines={true}
                                                 showInlineLineNumbers={true}
                                                 {...props}
