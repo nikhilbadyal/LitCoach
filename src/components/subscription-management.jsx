@@ -59,7 +59,8 @@ function SubscriptionManagementCard() {
 
     if (isDataLoading) {
         return (
-            <Card className="border-amber-200/40 animate-pulse">
+            // Subtle amber border with dark mode override so it's visible
+            <Card className="border-amber-200/40 dark:border-amber-800/40 animate-pulse">
                 <CardHeader>Loading subscription info...</CardHeader>
             </Card>
         );
@@ -67,7 +68,8 @@ function SubscriptionManagementCard() {
 
     if (customerPortalUrl) {
         return (
-            <Card className="border-blue-200">
+            // Blue border for active/expiring premium — dark override for visibility
+            <Card className="border-blue-200 dark:border-blue-800">
                 <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center">
                         <Crown className="w-5 h-5 text-blue-500 mr-2" />
@@ -98,7 +100,8 @@ function SubscriptionManagementCard() {
     }
 
     return (
-        <Card className="border-amber-200">
+        // Amber border for upgrade CTA — dark override for visibility
+        <Card className="border-amber-200 dark:border-amber-800">
             <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center">
                     <Crown className="w-5 h-5 text-amber-500 mr-2" />

@@ -64,3 +64,37 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* ── #6  Typing-indicator: three dots that pulse in a wave ── */
+@keyframes typing-dot {
+    0%, 80%, 100% {
+        opacity: 0.2;
+        transform: scale(0.8);
+    }
+    40% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ── #7  Message slide-in: new bubbles fade in from below ── */
+@keyframes message-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── #12  Circular character-count ring around the send button ── */
+.char-ring {
+    /* SVG circle progress ring — controlled via --progress custom property */
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+}
+.char-ring circle {
+    transition: stroke-dashoffset 0.2s ease;
+}

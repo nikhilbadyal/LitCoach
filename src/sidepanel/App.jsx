@@ -5,16 +5,10 @@ import { Input } from "@components/ui/input";
 import InvalidPage from "@components/invalid-page";
 import GetPremiumPopUp from "@components/get-premium";
 import { useToast } from "@hooks/use-toast";
-import { Info, Send, StopCircle, Loader2, Trash2, CheckCircle2, XCircle } from "lucide-react";
+import { Info, Send, StopCircle, Loader2, Trash2, CheckCircle2, XCircle, Lightbulb } from "lucide-react";
 import ReportIssueButton from "@components/report-issue";
-import ReactMarkdown from "react-markdown";
-import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/default-highlight";
-// Import a dark and a light syntax-highlighter theme so code blocks respect the active mode
-import { atomOneDark } from "react-syntax-highlighter/dist/esm/styles/hljs";
-import { atomOneLight } from "react-syntax-highlighter/dist/esm/styles/hljs";
-// useTheme is consumed inside MessageBubble to pick the right syntax-highlighter theme.
-// ThemeProvider has been lifted to main.jsx so ALL screens (loading, invalid page, chat) respect dark mode.
-import { useTheme } from "@/components/theme-provider";
+// #13 — MessageBubble extracted into its own file for cleaner code and avoiding re-creation per render
+import MessageBubble from "@components/message-bubble";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // Dynamically construct the options page URL so it works across reinstalls and ID changes
@@ -28,6 +22,54 @@ const SUGGESTIONS = [
     "Can you give me a hint?",
     "What is the time complexity?",
 ];
+
+/**
+ * #12 — CircularCharCounter: a small SVG ring that fills as the user types.
+ * Replaces the plain "0/275" text with a visual progress indicator.
+ * Turns red when the character limit is reached.
+ */
+const CircularCharCounter = ({ current, max }) => {
+    // SVG circle geometry
+    const radius = 10;
+    const circumference = 2 * Math.PI * radius;
+    // How much of the ring to fill (0 → full circumference = empty, circumference → 0 = full)
+    const progress = Math.min(current / max, 1);
+    const dashOffset = circumference * (1 - progress);
+    // Colour: muted by default, red when limit is reached
+    const isAtLimit = current >= max;
+    const strokeColor = isAtLimit ? "hsl(0 84.2% 60.2%)" : "hsl(var(--muted-foreground))";
+
+    return (
+        <div className="flex items-center gap-1" title={`${current}/${max} characters`}>
+            {/* SVG ring rotated -90° so progress starts from the top */}
+            <svg width="24" height="24" className="char-ring">
+                {/* Background track */}
+                <circle
+                    cx="12" cy="12" r={radius}
+                    fill="none"
+                    stroke="hsl(var(--border))"
+                    strokeWidth="2"
+                />
+                {/* Filled progress arc */}
+                <circle
+                    cx="12" cy="12" r={radius}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth="2"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={dashOffset}
+                    strokeLinecap="round"
+                />
+            </svg>
+            {/* Numeric counter — only show when user starts typing */}
+            {current > 0 && (
+                <span className={`text-[10px] ${isAtLimit ? "text-red-500" : "text-muted-foreground"}`}>
+                    {current}
+                </span>
+            )}
+        </div>
+    );
+};
 
 function App() {
     const { toast } = useToast();
@@ -206,70 +248,13 @@ function App() {
         }
     };
 
-    const MessageBubble = ({ message, index }) => {
-        const isLastMessage = index === messages.length - 1;
-        // Resolve the active theme ("light" | "dark") to select the matching syntax-highlighter style
-        const { resolvedTheme } = useTheme();
-        // Pick the dark or light syntax-highlighting colour-scheme based on the current theme
-        const codeStyle = resolvedTheme === "dark" ? atomOneDark : atomOneLight;
-        return (
-            <div className={`flex ${message.role === "user" && "justify-end"} mb-4`}>
-                <div
-                    className={`p-3 ${
-                        message.role === "user" &&
-                        /* Light mode: dark bg + white text via primary tokens.
-                           Dark mode: primary flips to white so we override with muted (subtle dark gray)
-                           and foreground (white text) to keep the bubble readable. */
-                        "rounded-lg max-w-[80%] bg-primary text-primary-foreground dark:bg-muted dark:text-foreground shadow-sm"
-                    }`}
-                >
-                    {message.role === "assistant" && !message.content && isLoading && isLastMessage ? (
-                        <Loader2 className="animate-spin w-4" />
-                    ) : message.role === "assistant" ? (
-                        <ReactMarkdown
-                            /* dark:prose-invert flips all typography-plugin colours for dark mode */
-                            className="prose prose-sm dark:prose-invert max-w-none"
-                            components={{
-                                pre({ ...props }) {
-                                    return props.children;
-                                },
-                                code({ className, ...props }) {
-                                    const match = /language-(\w+)/.exec(className || "");
-                                    return match ? (
-                                        <div className="relative overflow-x-auto">
-                                            {/* Apply the resolved code theme so blocks match light/dark mode */}
-                                            <SyntaxHighlighter
-                                                language={match[1]}
-                                                style={codeStyle}
-                                                wrapLongLines={true}
-                                                showInlineLineNumbers={true}
-                                                {...props}
-                                            />
-                                        </div>
-                                    ) : (
-                                        <span className="bg-secondary p-[3px] rounded text-sm font-mono whitespace-pre-wrap break-words">
-                                            {props.children}
-                                        </span>
-                                    );
-                                },
-                            }}
-                        >
-                            {message.content}
-                        </ReactMarkdown>
-                    ) : (
-                        <div className="whitespace-pre-wrap">{message.content}</div>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
     if (isValidPage) {
         return (
-                <div className="h-screen flex flex-col">
+                <div className="h-screen flex flex-col bg-background">
+                    {/* ── Header bar ── */}
                     <div className="p-2 border-b flex justify-between items-center">
                         <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => window.open(OPTIONS_PAGE)}>
+                            <Button variant="ghost" size="icon" onClick={() => window.open(OPTIONS_PAGE)} title="Settings">
                                 <Info className="h-5 w-5" />
                             </Button>
                             {/* Sync status indicators */}
@@ -297,38 +282,56 @@ function App() {
                         </div>
                     </div>
 
-                <div className="flex-1 overflow-hidden relative">
-                    <ScrollArea className="h-full px-4">
+                {/* ── Chat area ── */}
+                <div className="flex-1 overflow-hidden flex flex-col">
+                    <ScrollArea className="flex-1 px-4">
                         <div className="py-2 space-y-4">
                             {messages.map((message, index) => (
-                                <MessageBubble key={index} message={message} index={index} />
+                                // #13 — Using the extracted MessageBubble component
+                                <MessageBubble
+                                    key={index}
+                                    message={message}
+                                    index={index}
+                                    totalMessages={messages.length}
+                                    isStreaming={isLoading}
+                                />
                             ))}
                             <div ref={messagesEndRef} />
                         </div>
                     </ScrollArea>
 
+                    {/* #4 — Welcome message + #5 — Suggestion chips now in normal flow (not absolute) */}
                     {showSuggestions && (
-                        <div className="absolute bottom-4 left-4 flex gap-2 flex-wrap">
-                            {SUGGESTIONS.map((suggestion, index) => (
-                                <Button
-                                    key={index}
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-sm hover:bg-muted"
-                                    onClick={() => {
-                                        setInput(suggestion);
-                                        setShowSuggestions(false);
-                                    }}
-                                >
-                                    {suggestion}
-                                </Button>
-                            ))}
+                        <div className="px-4 pb-3 pt-2 border-t border-border/50">
+                            {/* #4 — Friendly welcome message for first-time context */}
+                            <div className="flex items-center gap-2 mb-3 text-muted-foreground">
+                                <Lightbulb className="h-4 w-4 shrink-0" />
+                                <p className="text-sm">Ask me anything about this problem</p>
+                            </div>
+                            {/* #5 — Chips are now part of the normal layout flow, no more overlap */}
+                            <div className="flex gap-2 flex-wrap">
+                                {SUGGESTIONS.map((suggestion, index) => (
+                                    <Button
+                                        key={index}
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-sm hover:bg-muted"
+                                        onClick={() => {
+                                            setInput(suggestion);
+                                            setShowSuggestions(false);
+                                        }}
+                                    >
+                                        {suggestion}
+                                    </Button>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
 
+                {/* ── Input area ── */}
                 <div className="border-t">
-                    <div className="p-4 pb-1 flex gap-2">
+                    <div className="p-4 pb-2 flex gap-2 items-center">
                         <Input
                             placeholder={"Ask a question..."}
                             value={input}
@@ -342,7 +345,10 @@ function App() {
                             disabled={isLoading}
                             className="flex-1"
                         />
+                        {/* #12 — Circular progress ring replaces the raw text counter */}
+                        <CircularCharCounter current={input.length} max={MAX_CHAR_LIMIT} />
                         {isLoading ? (
+                            // #9 — Keyboard shortcut tooltip on stop button
                             <Button
                                 variant="outline"
                                 size="icon"
@@ -350,19 +356,17 @@ function App() {
                                     abortControllerRef.current?.abort();
                                     setIsLoading(false);
                                 }}
+                                title="Stop generating"
                             >
                                 <StopCircle className="h-5 w-5" />
                             </Button>
                         ) : (
-                            <Button size="icon" disabled={!input.trim()} onClick={handleSendMessage}>
+                            // #9 — Keyboard shortcut tooltip on send button
+                            <Button size="icon" disabled={!input.trim()} onClick={handleSendMessage} title="Send (Enter)">
                                 <Send className="h-5 w-5" />
                             </Button>
                         )}
                     </div>
-                    {/* Live character count — turns red when the limit is reached */}
-                    <p className={`text-[10px] px-4 pb-2 ${input.length >= MAX_CHAR_LIMIT ? "text-red-500" : "text-muted-foreground"}`}>
-                        {input.length}/{MAX_CHAR_LIMIT}
-                    </p>
                 </div>
 
                 <GetPremiumPopUp

@@ -12,6 +12,22 @@ export default {
                 md: "calc(var(--radius) - 2px)",
                 sm: "calc(var(--radius) - 4px)",
             },
+            // Custom keyframes for typing indicator and message animations
+            keyframes: {
+                "typing-dot": {
+                    "0%, 80%, 100%": { opacity: "0.2", transform: "scale(0.8)" },
+                    "40%": { opacity: "1", transform: "scale(1)" },
+                },
+                "message-in": {
+                    from: { opacity: "0", transform: "translateY(8px)" },
+                    to: { opacity: "1", transform: "translateY(0)" },
+                },
+            },
+            // Animation utilities that reference the keyframes above
+            animation: {
+                "typing-dot": "typing-dot 1.4s infinite both",
+                "message-in": "message-in 0.2s ease-out",
+            },
             colors: {
                 background: "hsl(var(--background))",
                 foreground: "hsl(var(--foreground))",

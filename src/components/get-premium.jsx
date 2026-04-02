@@ -65,7 +65,8 @@ function GetPremiumPopUp({ googleUserID, isOpen, message, onClose }) {
                     </AlertDialogTitle>
                     <AlertDialogDescription className="space-y-4">
                         <div className="text-center md:text-left">{formattedMessage}</div>
-                        <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 space-y-2 text-center">
+                        {/* Dark mode: amber-50 is invisible, swap to a subtle dark amber tint */}
+                        <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-lg border border-amber-200 dark:border-amber-700 space-y-2 text-center">
                             <div className="text-sm">
                                 Get unlimited AI assistance to ace your coding interviews!
                             </div>
