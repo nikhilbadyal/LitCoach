@@ -65,5 +65,8 @@ export default defineConfig(({ mode }) => {
                 "@sidepanel": `${srcDir}/sidepanel`,
             },
         },
+        build: {
+            chunkSizeWarningLimit: 1500, // Extensions load from local disk, so network chunk rules do not apply
+        },
     };
 });
