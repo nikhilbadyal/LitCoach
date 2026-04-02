@@ -75,6 +75,7 @@ function App() {
     const { toast } = useToast();
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
+    const inputRef = useRef(null);
     // Ref to track the current problem slug so we can clear chat on problem switches
     const currentProblemRef = useRef(null);
     const [googleUserID, setGoogleUserID] = useState(null);
@@ -151,6 +152,13 @@ function App() {
             chrome.storage.onChanged.removeListener(onStorageChanged);
         };
     }, []);
+
+    // Automatically refocus the input after the AI finishes generating so users can type a follow-up immediately
+    useEffect(() => {
+        if (!isLoading) {
+            setTimeout(() => inputRef.current?.focus(), 10);
+        }
+    }, [isLoading]);
 
     const updateIsValidPage = (message) => {
         if (message.isLeetCodeProblem !== undefined) {
@@ -333,6 +341,8 @@ function App() {
                 <div className="border-t">
                     <div className="p-4 pb-2 flex gap-2 items-center">
                         <Input
+                            ref={inputRef}
+                            autoFocus
                             placeholder={"Ask a question..."}
                             value={input}
                             onChange={handleInputChange}
