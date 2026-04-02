@@ -86,7 +86,7 @@ const SyncHistory = () => {
                                             
                                             {/* Problem info */}
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium truncate">
+                                                <p className="text-sm font-medium truncate" title={item.problemTitle || item.problemSlug}>
                                                     {item.problemTitle || item.problemSlug}
                                                 </p>
                                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">

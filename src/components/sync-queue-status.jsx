@@ -76,9 +76,9 @@ const SyncQueueStatus = () => {
     };
 
     return (
-        <Alert className="mb-4 border-blue-200 bg-blue-50">
-            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-            <AlertTitle className="text-blue-900 flex items-center justify-between">
+        <Alert className="mb-4 border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+            <AlertTitle className="text-blue-900 dark:text-blue-100 flex items-center justify-between">
                 <span>Sync Queue Active</span>
                 {/* Manual retry button */}
                 <Button
@@ -96,7 +96,7 @@ const SyncQueueStatus = () => {
                     Retry Now
                 </Button>
             </AlertTitle>
-            <AlertDescription className="text-sm text-blue-800">
+            <AlertDescription className="text-sm text-blue-800 dark:text-blue-200">
                 {queueInfo.count} submission{queueInfo.count !== 1 ? "s" : ""} waiting to sync to GitHub.{" "}
                 {getRetryText()}
             </AlertDescription>

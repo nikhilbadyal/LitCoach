@@ -467,12 +467,12 @@ const GitHubSubmissionSync = () => {
 
                         <TabsContent value="select" className="mt-4">
                             {userData.repos.length === 0 ? (
-                                <Alert>
-                                    <AlertTitle>No repositories found</AlertTitle>
-                                    <AlertDescription>
-                                        Create a new repository to get started with syncing.
-                                    </AlertDescription>
-                                </Alert>
+                                <div className="flex flex-col items-center justify-center py-6 text-center border-2 border-dashed rounded-lg bg-muted/50 border-muted-foreground/20">
+                                    <p className="text-sm font-medium text-foreground mb-1">No repositories found</p>
+                                    <p className="text-xs text-muted-foreground max-w-[200px]">
+                                        Switch to the <span className="font-semibold text-foreground">New Repo</span> tab to get started.
+                                    </p>
+                                </div>
                             ) : (
                                 <Select value={selectedRepo.id?.toString()} onValueChange={handleRepoSelect}>
                                     <SelectTrigger>
