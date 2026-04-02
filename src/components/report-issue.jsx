@@ -1,7 +1,7 @@
 import { Button } from "@components/ui/button";
 import { ExternalLink } from "lucide-react";
 
-const FEEDBACK_FORM = "https://forms.gle/p2Qv8c7uJSgpK6zB7";
+const FEEDBACK_FORM = "https://www.nikhilbadyal.com/";
 
 function ReportIssueButton() {
     return (

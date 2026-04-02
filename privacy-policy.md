@@ -78,4 +78,4 @@ This policy follows the laws of Texas, USA.
 
 📧 [rtabrizi03@gmail.com](mailto:rtabrizi03@gmail.com)
 
-📄 [Feedback Form](https://forms.gle/BMk1VpNhFdRpreck9)
+📄 [Feedback Form](https://www.nikhilbadyal.com/)
