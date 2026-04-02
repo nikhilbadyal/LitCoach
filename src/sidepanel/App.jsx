@@ -339,11 +339,12 @@ function App() {
 
                 {/* ── Input area ── */}
                 <div className="border-t">
-                    <div className="p-4 pb-2 flex gap-2 items-center">
-                        <Input
+                    <div className="p-4 pb-2 flex gap-2 items-end">
+                        <textarea
                             ref={inputRef}
                             autoFocus
-                            placeholder={"Ask a question..."}
+                            rows={1}
+                            placeholder="Ask a question... (Shift+Enter for new line)"
                             value={input}
                             onChange={handleInputChange}
                             onKeyDown={(e) => {
@@ -353,10 +354,11 @@ function App() {
                                 }
                             }}
                             disabled={isLoading}
-                            className="flex-1"
+                            className="flex-1 min-h-[40px] max-h-[150px] resize-y rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         />
-                        {/* #12 — Circular progress ring replaces the raw text counter */}
-                        <CircularCharCounter current={input.length} max={MAX_CHAR_LIMIT} />
+                        <div className="flex items-center gap-2 pb-1">
+                            {/* #12 — Circular progress ring replaces the raw text counter */}
+                            <CircularCharCounter current={input.length} max={MAX_CHAR_LIMIT} />
                         {isLoading ? (
                             // #9 — Keyboard shortcut tooltip on stop button
                             <Button
@@ -376,6 +378,7 @@ function App() {
                                 <Send className="h-5 w-5" />
                             </Button>
                         )}
+                        </div>
                     </div>
                 </div>
 
