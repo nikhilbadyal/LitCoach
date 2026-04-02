@@ -172,7 +172,8 @@ export const GoogleAuth = ({ children }) => {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-4">
+            /* bg-background ensures this screen respects the dark/light theme */
+            <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background">
                 <Loader2 className="animate-spin h-8 w-8" />
                 <p className="text-sm font-light text-muted-foreground mt-2">Getting everything ready...</p>
             </div>
@@ -181,7 +182,8 @@ export const GoogleAuth = ({ children }) => {
 
     if (!isAuthenticated) {
         return (
-            <div className="flex flex-col h-screen items-center justify-center space-y-3 p-4 text-center max-w-sm mx-auto">
+            /* bg-background ensures the auth screen respects the dark/light theme */
+            <div className="flex flex-col h-screen items-center justify-center space-y-3 p-4 text-center max-w-sm mx-auto bg-background">
                 <h2 className="text-2xl font-semibold text-foreground">Authentication Required</h2>
                 <p className="text-sm text-muted-foreground">Authenticate with Google to use this extension</p>
 

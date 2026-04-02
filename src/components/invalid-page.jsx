@@ -71,7 +71,8 @@ const InvalidPage = () => {
                 </Button>
             </div>
 
-            <div className="flex flex-col h-screen items-center justify-center space-y-3 p-4 text-center max-w-sm mx-auto">
+            {/* bg-background ensures this screen respects the dark/light theme */}
+            <div className="flex flex-col h-screen items-center justify-center space-y-3 p-4 text-center max-w-sm mx-auto bg-background">
                 <h2 className="text-2xl font-semibold text-foreground">Navigate to LeetCode</h2>
                 <p className="text-sm text-muted-foreground mb-4">
                     Please visit a LeetCode problem page to get AI assistance with your solution.

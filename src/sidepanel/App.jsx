@@ -12,7 +12,9 @@ import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/default-highlig
 // Import a dark and a light syntax-highlighter theme so code blocks respect the active mode
 import { atomOneDark } from "react-syntax-highlighter/dist/esm/styles/hljs";
 import { atomOneLight } from "react-syntax-highlighter/dist/esm/styles/hljs";
-import { ThemeProvider, useTheme } from "@/components/theme-provider";
+// useTheme is consumed inside MessageBubble to pick the right syntax-highlighter theme.
+// ThemeProvider has been lifted to main.jsx so ALL screens (loading, invalid page, chat) respect dark mode.
+import { useTheme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // Dynamically construct the options page URL so it works across reinstalls and ID changes
@@ -215,7 +217,10 @@ function App() {
                 <div
                     className={`p-3 ${
                         message.role === "user" &&
-                        "rounded-lg max-w-[80%] bg-primary text-primary-foreground shadow-sm"
+                        /* Light mode: dark bg + white text via primary tokens.
+                           Dark mode: primary flips to white so we override with muted (subtle dark gray)
+                           and foreground (white text) to keep the bubble readable. */
+                        "rounded-lg max-w-[80%] bg-primary text-primary-foreground dark:bg-muted dark:text-foreground shadow-sm"
                     }`}
                 >
                     {message.role === "assistant" && !message.content && isLoading && isLastMessage ? (
@@ -261,7 +266,6 @@ function App() {
 
     if (isValidPage) {
         return (
-            <ThemeProvider defaultTheme="system" storageKey="litcoach-theme">
                 <div className="h-screen flex flex-col">
                     <div className="p-2 border-b flex justify-between items-center">
                         <div className="flex items-center gap-1">
@@ -368,7 +372,6 @@ function App() {
                     onClose={() => setPremiumAlert({ open: false })}
                 />
             </div>
-        </ThemeProvider>
         );
     }
 
