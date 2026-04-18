@@ -25,12 +25,12 @@ jobs:
     steps:
       # Step 1: Checkout the repository code
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       # Step 2: Set up Node.js environment
       # Using Node.js 20 LTS for stability
       - name: Setup Node.js
-        uses: actions/setup-node@v6.3.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 'latest'
           cache: 'npm'
@@ -79,7 +79,7 @@ jobs:
       # Artifacts are available for 90 days by default
       # To download: Go to Actions tab → Click on workflow run → Scroll to Artifacts section
       - name: Upload build artifact
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: litcoach-extension-${{ github.sha }}
           path: litcoach.zip
@@ -98,7 +98,7 @@ jobs:
       # This step only runs when a tag is pushed
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2.6.1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           # Use the tag name as the release name
           name: Release ${{ github.ref_name }}
